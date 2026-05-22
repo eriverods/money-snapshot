@@ -61,7 +61,7 @@ await dbUpsert("money_accounts", { id, data, updated_at: new Date().toISOString(
 
 async function loadExpenses() {
 const rows = await dbGet("money_expenses", "?select=id,data&order=id.asc");
-return (rows || []).map(r => ({ …r.data, id: r.id }));
+return (rows || []).map(r => ({ r.data, id: r.id }));
 }
 
 async function saveExpense(expense) {
@@ -75,7 +75,7 @@ await dbDelete("money_expenses", `?id=eq.${id}`);
 
 async function loadIncomes() {
 const rows = await dbGet("money_incomes", "?select=id,data&order=id.asc");
-return (rows || []).map(r => ({ …r.data, id: r.id }));
+return (rows || []).map(r => ({ r.data, id: r.id }));
 }
 
 async function saveIncome(income) {
@@ -121,7 +121,7 @@ function getOccurrences(item, ws, we) {
 const start = new Date(item.date + "T00:00:00");
 const out = [];
 if (!item.recurrence || item.recurrence === "Once") {
-if (start >= ws && start <= we) out.push({ …item, occDate: item.date });
+if (start >= ws && start <= we) out.push({ item, occDate: item.date });
 return out;
 }
 let cur = new Date(start), n = 0;
