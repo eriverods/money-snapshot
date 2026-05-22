@@ -1,7 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 
-const SUPABASE_URL = "https://vrnwuqvaexejngrtxres.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZybnd1cXZhZXhlam5ncnR4cmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MTUwODksImV4cCI6MjA5NDk5MTA4OX0.8DMN3FVx_4VmEYfTDatHIpfZNM8W4laGChhG4gUCmVM";
+const SUPABASE_URL = "https://vrnwuqvaexejngrtxres
+.
+supabase
+.
+co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+.
+eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZybnd1cXZhZXhlam5ncnR4cmVzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0MTUwODksImV4cCI6MjA5NDk5MTA4OX0
+.
+8DMN3FVx_4VmEYfTDatHIpfZNM8W4laGChhG4gUCmVM";
 
 const ACCOUNTS = [
 { id: "chq1", label: "Bills",        type: "bank",   color: "#4ade80" },
@@ -17,8 +25,12 @@ const CATS = ["Bills","Groceries","Transport","Subscriptions","Dining","Other"];
 const RECUR = ["Once","Weekly","Bi-weekly","Monthly","Yearly"];
 const INC_SOURCES = ["Employment","Freelance","Government","Investment","Other"];
 
-const DEFAULT_ACCOUNTS = ACCOUNTS.reduce((acc, a) => {
-acc[a.id] = { balance: "0", dueDay: "", minPayment: "", note: "" };
+const DEFAULT_ACCOUNTS = ACCOUNTS
+.
+reduce((acc, a) => {
+acc[a
+.
+id] = { balance: "0", dueDay: "", minPayment: "", note: "" };
 return acc;
 }, {});
 
@@ -32,7 +44,9 @@ headers: {
 "Content-Type": "application/json",
 "Prefer": method === "POST" ? "resolution=merge-duplicates,return=representation" : "return=representation",
 },
-body: body ? JSON.stringify(body) : undefined,
+body: body ? JSON
+.
+stringify(body) : undefined,
 });
 if (!res.ok) {
 const err = await res.text();
@@ -49,7 +63,7 @@ const dbDelete = (table, query)       => sb("DELETE", table, null, query);
 // Load all account balances
 async function loadAccounts() {
 const rows = await dbGet("money_accounts", "?select=id,data");
-const result = { …DEFAULT_ACCOUNTS };
+const result = { DEFAULT_ACCOUNTS };
 (rows || []).forEach(r => { result[r.id] = r.data; });
 return result;
 }
