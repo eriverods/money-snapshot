@@ -174,16 +174,16 @@ function BookSetup({ session, onComplete }) {
   async function create(migrate) {
     setLoading(true); setError(null)
     try {
-      const { data: book, error: e1 } = await supabase
-        .from('books').insert({ name: bookName, owner_user_id: session.user.id })
-        .select().single()
-      if (e1) throw e1
-      if (migrate) {
-        await Promise.all([
-          supabase.from('cashflow_accounts').update({ book_id: book.id }).is('book_id', null),
-          supabase.from('cashflow_transactions').update({ book_id: book.id }).is('book_id', null),
-        ])
-      }
+      // Use a SECURITY DEFINER function to bypass RLS for book creation + migration
+      const { data: bookId, error: fnErr } = await supabase.rpc('create_personal_book', {
+        p_name: bookName,
+        p_migrate: migrate,
+      })
+      if (fnErr) throw fnErr
+      // Fetch the created book
+      const { data: book, error: fetchErr } = await supabase
+        .from('books').select('*').eq('id', bookId).single()
+      if (fetchErr) throw fetchErr
       onComplete(book)
     } catch (e) { setError(e.message); setLoading(false) }
   }
