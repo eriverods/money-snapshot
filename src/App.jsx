@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
@@ -1044,8 +1044,31 @@ function MainApp({ session, book, onSignOut }) {
   )
 }
 
+// ─── CONFIG ERROR SCREEN ──────────────────────────────────────────────────────
+function ConfigError() {
+  return (
+    <div style={{ ...S.root, paddingBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, minHeight: '100vh' }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.orange, marginBottom: 12 }}>Missing configuration</div>
+        <div style={{ ...S.card, borderLeft: `3px solid ${C.orange}` }}>
+          <p style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, margin: '0 0 14px' }}>
+            The <code style={{ color: C.orange }}>VITE_SUPABASE_ANON_KEY</code> environment variable is not set.
+          </p>
+          <p style={{ fontSize: 12, color: C.textLow, lineHeight: 1.7, margin: 0 }}>
+            In Netlify → Site configuration → Environment variables, add:<br /><br />
+            <code style={{ color: C.text, fontSize: 11 }}>VITE_SUPABASE_ANON_KEY</code><br />
+            <span style={{ fontSize: 11 }}>Value: your anon key from Supabase → Settings → API</span><br /><br />
+            Then redeploy.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
+  if (missingConfig) return <ConfigError />
   const [session, setSession] = useState(undefined)  // undefined = loading
   const [book, setBook] = useState(null)
   const [checkingBook, setCheckingBook] = useState(false)
