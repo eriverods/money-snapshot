@@ -1068,12 +1068,13 @@ function ConfigError() {
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  if (missingConfig) return <ConfigError />
-  const [session, setSession] = useState(undefined)  // undefined = loading
+  // Hooks must always run — conditional returns come AFTER
+  const [session, setSession] = useState(undefined)
   const [book, setBook] = useState(null)
   const [checkingBook, setCheckingBook] = useState(false)
 
   useEffect(() => {
+    if (missingConfig) return
     supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s ?? null))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s ?? null)
@@ -1083,7 +1084,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!session) return
+    if (missingConfig || !session) return
     setCheckingBook(true)
     supabase.from('books').select('*').eq('owner_user_id', session.user.id).limit(1)
       .then(({ data }) => {
@@ -1093,9 +1094,13 @@ export default function App() {
   }, [session])
 
   async function signOut() {
+    if (missingConfig) return
     await supabase.auth.signOut()
     setBook(null)
   }
+
+  // Conditional renders after all hooks
+  if (missingConfig) return <ConfigError />
 
   if (session === undefined || checkingBook) {
     return (
