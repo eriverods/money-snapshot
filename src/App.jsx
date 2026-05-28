@@ -1075,7 +1075,9 @@ export default function App() {
 
   useEffect(() => {
     if (missingConfig) return
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s ?? null))
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => setSession(s ?? null))
+      .catch(() => setSession(null))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s ?? null)
       if (!s) setBook(null)
@@ -1104,8 +1106,9 @@ export default function App() {
 
   if (session === undefined || checkingBook) {
     return (
-      <div style={{ ...S.root, paddingBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <div style={{ ...S.root, paddingBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 16 }}>
         <Spinner />
+        <div style={{ fontSize: 12, color: C.textLow }}>Loading Lighthouse Trail…</div>
       </div>
     )
   }
