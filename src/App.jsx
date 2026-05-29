@@ -99,20 +99,25 @@ function RecurBadge({ r }) {
 // ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 function AuthScreen() {
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
 
-  async function sendLink() {
-    if (!email.trim()) return
-    setLoading(true); setError(null)
-    const { error: err } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.origin }
-    })
-    setLoading(false)
-    if (err) setError(err.message)
-    else setSent(true)
+  async function submit() {
+    if (!email.trim() || !password) return
+    setLoading(true); setError(null); setSuccess(null)
+    if (mode === 'signup') {
+      const { error: err } = await supabase.auth.signUp({ email: email.trim(), password })
+      setLoading(false)
+      if (err) setError(err.message)
+      else setSuccess('Account created — you can sign in now.')
+    } else {
+      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      setLoading(false)
+      if (err) setError(err.message)
+    }
   }
 
   return (
@@ -122,38 +127,29 @@ function AuthScreen() {
           <div style={{ fontSize: 26, fontWeight: 700, color: C.purple, letterSpacing: -0.5 }}>Lighthouse Trail</div>
           <div style={{ fontSize: 12, color: C.textLow, marginTop: 4 }}>Cash flow & budget tracker</div>
         </div>
-        {sent ? (
-          <div style={{ ...S.card, textAlign: 'center', padding: 28 }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📬</div>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Check your email</div>
-            <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.7 }}>
-              Sent a sign-in link to<br /><span style={{ color: C.purple }}>{email}</span>
-            </div>
-            <button style={{ ...S.btn(), marginTop: 20, width: '100%' }} onClick={() => setSent(false)}>
-              Use different email
-            </button>
+        <div style={S.card}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {['signin', 'signup'].map(m => (
+              <button key={m} onClick={() => { setMode(m); setError(null); setSuccess(null) }}
+                style={{ flex: 1, background: mode === m ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 8, padding: '8px 0', color: mode === m ? '#0a0f1a' : C.textLow, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                {m === 'signin' ? 'Sign in' : 'Create account'}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div style={S.card}>
-            <div style={{ ...S.lbl, marginBottom: 8 }}>Sign in</div>
-            <input
-              style={{ ...S.inp, marginBottom: 10 }}
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendLink()}
-              autoFocus
-            />
-            {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{error}</div>}
-            <button style={{ ...S.btn(), width: '100%' }} onClick={sendLink} disabled={loading}>
-              {loading ? 'Sending…' : 'Send magic link'}
-            </button>
-            <div style={{ fontSize: 10, color: C.textLow, textAlign: 'center', marginTop: 10 }}>
-              No password · magic link by email
-            </div>
-          </div>
-        )}
+          <div style={S.lbl}>Email</div>
+          <input style={{ ...S.inp, marginBottom: 10 }} type="email" placeholder="your@email.com"
+            value={email} onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()} autoFocus />
+          <div style={S.lbl}>Password</div>
+          <input style={{ ...S.inp, marginBottom: 14 }} type="password" placeholder="••••••••"
+            value={password} onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()} />
+          {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{error}</div>}
+          {success && <div style={{ fontSize: 11, color: C.green, marginBottom: 10 }}>{success}</div>}
+          <button style={{ ...S.btn(), width: '100%' }} onClick={submit} disabled={loading}>
+            {loading ? '…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+          </button>
+        </div>
       </div>
     </div>
   )
