@@ -880,7 +880,7 @@ function CheckInBanner({ onReconcile, onQuickAdd, onDismiss }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-function MainApp({ session, book, onSignOut }) {
+function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
   const [transactions, setTransactions] = useState([])
   const [overrides, setOverrides] = useState([])
@@ -889,6 +889,7 @@ function MainApp({ session, book, onSignOut }) {
   const [reconcileAccount, setReconcileAccount] = useState(null)
   const [showAddTx, setShowAddTx] = useState(false)
   const [showCheckin, setShowCheckin] = useState(false)
+  const [showBookPicker, setShowBookPicker] = useState(false)
 
   const today = todayStr()
 
@@ -968,13 +969,35 @@ function MainApp({ session, book, onSignOut }) {
               {new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>Lighthouse Trail</div>
-            <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>{book.name}</div>
+            <button
+              onClick={() => allBooks.length > 1 && setShowBookPicker(true)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: allBooks.length > 1 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}
+            >
+              <span style={{ fontSize: 10, color: C.textLow }}>{book.name}</span>
+              {allBooks.length > 1 && <span style={{ fontSize: 9, color: C.purple }}>▾</span>}
+            </button>
           </div>
           <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
             Sign out
           </button>
         </div>
       </div>
+
+      {/* Book picker */}
+      {showBookPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200 }} onClick={() => setShowBookPicker(false)}>
+          <div style={{ position: 'absolute', top: 70, left: 16, right: 16, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '12px 14px 6px' }}>Switch book</div>
+            {allBooks.map(b => (
+              <button key={b.id} onClick={() => { onSwitchBook(b); setShowBookPicker(false) }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', borderTop: `1px solid ${C.border}`, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontWeight: b.id === book.id ? 700 : 400 }}>{b.name}</span>
+                {b.id === book.id && <span style={{ fontSize: 12, color: C.purple }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Body */}
       <div style={{ padding: '14px 14px 0' }}>
@@ -1067,6 +1090,7 @@ export default function App() {
   // Hooks must always run — conditional returns come AFTER
   const [session, setSession] = useState(undefined)
   const [book, setBook] = useState(null)
+  const [allBooks, setAllBooks] = useState([])
   const [checkingBook, setCheckingBook] = useState(false)
 
   useEffect(() => {
@@ -1084,9 +1108,11 @@ export default function App() {
   useEffect(() => {
     if (missingConfig || !session) return
     setCheckingBook(true)
-    supabase.from('books').select('*').eq('owner_user_id', session.user.id).limit(1)
+    supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
       .then(({ data }) => {
-        if (data?.length > 0) setBook(data[0])
+        const books = data || []
+        setAllBooks(books)
+        if (books.length > 0) setBook(books[0])
         setCheckingBook(false)
       })
   }, [session])
@@ -1110,7 +1136,7 @@ export default function App() {
   }
 
   if (!session) return <AuthScreen />
-  if (!book) return <BookSetup session={session} onComplete={setBook} />
+  if (!book) return <BookSetup session={session} onComplete={b => { setAllBooks(prev => [...prev, b]); setBook(b) }} />
 
-  return <MainApp session={session} book={book} onSignOut={signOut} />
+  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={setBook} onSignOut={signOut} />
 }
