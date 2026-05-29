@@ -12,12 +12,20 @@
     <title>Lighthouse Trail</title>
     <style>
       * { -webkit-tap-highlight-color: transparent; }
-      body { margin: 0; background: #0a0f1a; }
+      body { margin: 0; background: #0a0f1a; color: #f1f5f9; font-family: monospace; }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
+    <script>
+      window.onerror = function(msg, src, line, col, err) {
+        document.getElementById('root').innerHTML =
+          '<div style="padding:24px;color:#f87171">' +
+          '<b>JS Error</b><br><br>' + msg +
+          '<br><small style="color:#94a3b8">' + src + ':' + line + '</small></div>';
+      };
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div style="padding:24px;color:#475569;font-size:13px">Starting up…</div></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
       // Unregister any stale service workers
