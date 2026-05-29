@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL || 'https://qcmjhoxgdlzqdfyyrrmt.supabase.co'
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const rawUrl = import.meta.env.VITE_SUPABASE_URL
+const rawKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+const url = (rawUrl && rawUrl.startsWith('https://'))
+  ? rawUrl
+  : 'https://qcmjhoxgdlzqdfyyrrmt.supabase.co'
+
+const key = rawKey || ''
 
 export const missingConfig = !key
 
