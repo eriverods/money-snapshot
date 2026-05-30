@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
+import CyclesTab from './CyclesTab'
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const C = {
@@ -99,20 +100,25 @@ function RecurBadge({ r }) {
 // ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 function AuthScreen() {
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [mode, setMode] = useState('signin') // 'signin' | 'signup'
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
 
-  async function sendLink() {
-    if (!email.trim()) return
-    setLoading(true); setError(null)
-    const { error: err } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.origin }
-    })
-    setLoading(false)
-    if (err) setError(err.message)
-    else setSent(true)
+  async function submit() {
+    if (!email.trim() || !password) return
+    setLoading(true); setError(null); setSuccess(null)
+    if (mode === 'signup') {
+      const { error: err } = await supabase.auth.signUp({ email: email.trim(), password })
+      setLoading(false)
+      if (err) setError(err.message)
+      else setSuccess('Account created — you can sign in now.')
+    } else {
+      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      setLoading(false)
+      if (err) setError(err.message)
+    }
   }
 
   return (
@@ -122,38 +128,29 @@ function AuthScreen() {
           <div style={{ fontSize: 26, fontWeight: 700, color: C.purple, letterSpacing: -0.5 }}>Lighthouse Trail</div>
           <div style={{ fontSize: 12, color: C.textLow, marginTop: 4 }}>Cash flow & budget tracker</div>
         </div>
-        {sent ? (
-          <div style={{ ...S.card, textAlign: 'center', padding: 28 }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📬</div>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Check your email</div>
-            <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.7 }}>
-              Sent a sign-in link to<br /><span style={{ color: C.purple }}>{email}</span>
-            </div>
-            <button style={{ ...S.btn(), marginTop: 20, width: '100%' }} onClick={() => setSent(false)}>
-              Use different email
-            </button>
+        <div style={S.card}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {['signin', 'signup'].map(m => (
+              <button key={m} onClick={() => { setMode(m); setError(null); setSuccess(null) }}
+                style={{ flex: 1, background: mode === m ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 8, padding: '8px 0', color: mode === m ? '#0a0f1a' : C.textLow, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                {m === 'signin' ? 'Sign in' : 'Create account'}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div style={S.card}>
-            <div style={{ ...S.lbl, marginBottom: 8 }}>Sign in</div>
-            <input
-              style={{ ...S.inp, marginBottom: 10 }}
-              type="email"
-              placeholder="your@email.com"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendLink()}
-              autoFocus
-            />
-            {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{error}</div>}
-            <button style={{ ...S.btn(), width: '100%' }} onClick={sendLink} disabled={loading}>
-              {loading ? 'Sending…' : 'Send magic link'}
-            </button>
-            <div style={{ fontSize: 10, color: C.textLow, textAlign: 'center', marginTop: 10 }}>
-              No password · magic link by email
-            </div>
-          </div>
-        )}
+          <div style={S.lbl}>Email</div>
+          <input style={{ ...S.inp, marginBottom: 10 }} type="email" placeholder="your@email.com"
+            value={email} onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()} autoFocus />
+          <div style={S.lbl}>Password</div>
+          <input style={{ ...S.inp, marginBottom: 14 }} type="password" placeholder="••••••••"
+            value={password} onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()} />
+          {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{error}</div>}
+          {success && <div style={{ fontSize: 11, color: C.green, marginBottom: 10 }}>{success}</div>}
+          <button style={{ ...S.btn(), width: '100%' }} onClick={submit} disabled={loading}>
+            {loading ? '…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -162,28 +159,20 @@ function AuthScreen() {
 // ─── BOOK SETUP ───────────────────────────────────────────────────────────────
 function BookSetup({ session, onComplete }) {
   const [bookName, setBookName] = useState('Personal')
-  const [hasOrphans, setHasOrphans] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-
-  useEffect(() => {
-    supabase.from('cashflow_transactions').select('id').is('book_id', null).limit(1)
-      .then(({ data }) => setHasOrphans(data?.length > 0))
-  }, [])
 
   async function create(migrate) {
     setLoading(true); setError(null)
     try {
-      const { data: book, error: e1 } = await supabase
-        .from('books').insert({ name: bookName, owner_user_id: session.user.id })
-        .select().single()
-      if (e1) throw e1
-      if (migrate) {
-        await Promise.all([
-          supabase.from('cashflow_accounts').update({ book_id: book.id }).is('book_id', null),
-          supabase.from('cashflow_transactions').update({ book_id: book.id }).is('book_id', null),
-        ])
-      }
+      const { data: bookId, error: fnErr } = await supabase.rpc('create_personal_book', {
+        p_name: bookName,
+        p_migrate: migrate,
+      })
+      if (fnErr) throw fnErr
+      const { data: book, error: fetchErr } = await supabase
+        .from('books').select('*').eq('id', bookId).single()
+      if (fetchErr) throw fetchErr
       onComplete(book)
     } catch (e) { setError(e.message); setLoading(false) }
   }
@@ -199,25 +188,17 @@ function BookSetup({ session, onComplete }) {
           <div style={S.lbl}>Book name</div>
           <input style={{ ...S.inp, marginBottom: 14 }} value={bookName} onChange={e => setBookName(e.target.value)} />
           {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{error}</div>}
-          {hasOrphans === null ? <Spinner /> : hasOrphans ? (
-            <>
-              <div style={{ fontSize: 12, color: C.orange, background: C.orange + '18', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                Existing data found. Import it into your new book?
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button style={{ ...S.btn(C.green), flex: 1 }} onClick={() => create(true)} disabled={loading}>
-                  {loading ? 'Setting up…' : 'Yes, import data'}
-                </button>
-                <button style={{ ...S.btn(C.surfaceHigh, true), flex: 1 }} onClick={() => create(false)} disabled={loading}>
-                  Start fresh
-                </button>
-              </div>
-            </>
-          ) : (
-            <button style={{ ...S.btn(), width: '100%' }} onClick={() => create(false)} disabled={loading}>
-              {loading ? 'Creating…' : 'Create book'}
+          <div style={{ fontSize: 12, color: C.orange, background: C.orange + '18', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+            Import existing accounts & transactions into this book?
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ ...S.btn(C.green), flex: 1 }} onClick={() => create(true)} disabled={loading}>
+              {loading ? 'Setting up…' : 'Yes, import data'}
             </button>
-          )}
+            <button style={{ ...S.btn(C.surfaceHigh, true), flex: 1 }} onClick={() => create(false)} disabled={loading}>
+              Start fresh
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -259,6 +240,7 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
             <select style={S.sel} value={form.type} onChange={e => set('type', e.target.value)}>
               <option value="expense">Expense</option>
               <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
             </select>
           </div>
           <div>
@@ -301,7 +283,7 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
         </div>
         {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{error}</div>}
         <button style={{ ...S.btn(form.type === 'income' ? C.green : C.orange), width: '100%' }} onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : `Add ${form.type}`}
+          {saving ? 'Saving…' : form.type === 'income' ? 'Add Income' : form.type === 'transfer' ? 'Add Transfer' : 'Add Expense'}
         </button>
       </div>
     </div>
@@ -345,7 +327,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile }) {
 
   const exp30 = useMemo(() => {
     let s = 0
-    for (const tx of transactions.filter(t => t.type !== 'income')) {
+    for (const tx of transactions.filter(t => t.type === 'expense')) {
       expandTx(tx, today, end30str).forEach(() => { s += parseFloat(tx.amount) || 0 })
     }
     return s
@@ -535,6 +517,7 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
           <option value="">All types</option>
           <option value="income">Income</option>
           <option value="expense">Expenses</option>
+          <option value="transfer">Transfers</option>
         </select>
       </div>
 
@@ -884,7 +867,7 @@ function CheckInBanner({ onReconcile, onQuickAdd, onDismiss }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-function MainApp({ session, book, onSignOut }) {
+function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
   const [transactions, setTransactions] = useState([])
   const [overrides, setOverrides] = useState([])
@@ -893,6 +876,7 @@ function MainApp({ session, book, onSignOut }) {
   const [reconcileAccount, setReconcileAccount] = useState(null)
   const [showAddTx, setShowAddTx] = useState(false)
   const [showCheckin, setShowCheckin] = useState(false)
+  const [showBookPicker, setShowBookPicker] = useState(false)
 
   const today = todayStr()
 
@@ -956,8 +940,9 @@ function MainApp({ session, book, onSignOut }) {
 
   const tabs = [
     { id: 'overview', label: 'Home', icon: '⌂' },
+    { id: 'cycles', label: 'Cycles', icon: '⊙' },
     { id: 'agenda', label: 'Agenda', icon: '≡' },
-    { id: 'calendar', label: 'Calendar', icon: '▦' },
+    { id: 'calendar', label: 'Cal', icon: '▦' },
     { id: 'accounts', label: 'Accounts', icon: '◎' },
     { id: 'transactions', label: 'Manage', icon: '✦' },
   ]
@@ -972,13 +957,35 @@ function MainApp({ session, book, onSignOut }) {
               {new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>Lighthouse Trail</div>
-            <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>{book.name}</div>
+            <button
+              onClick={() => allBooks.length > 1 && setShowBookPicker(true)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: allBooks.length > 1 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}
+            >
+              <span style={{ fontSize: 10, color: C.textLow }}>{book.name}</span>
+              {allBooks.length > 1 && <span style={{ fontSize: 9, color: C.purple }}>▾</span>}
+            </button>
           </div>
           <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
             Sign out
           </button>
         </div>
       </div>
+
+      {/* Book picker */}
+      {showBookPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200 }} onClick={() => setShowBookPicker(false)}>
+          <div style={{ position: 'absolute', top: 70, left: 16, right: 16, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '12px 14px 6px' }}>Switch book</div>
+            {allBooks.map(b => (
+              <button key={b.id} onClick={() => { onSwitchBook(b); setShowBookPicker(false) }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', borderTop: `1px solid ${C.border}`, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ fontWeight: b.id === book.id ? 700 : 400 }}>{b.name}</span>
+                {b.id === book.id && <span style={{ fontSize: 12, color: C.purple }}>✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Body */}
       <div style={{ padding: '14px 14px 0' }}>
@@ -994,6 +1001,9 @@ function MainApp({ session, book, onSignOut }) {
           <>
             {activeTab === 'overview' && (
               <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides} onReconcile={setReconcileAccount} />
+            )}
+            {activeTab === 'cycles' && (
+              <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />
             )}
             {activeTab === 'agenda' && (
               <AgendaTab accounts={accounts} transactions={transactions} overrides={overrides} onOverrideChange={loadData} />
@@ -1044,14 +1054,41 @@ function MainApp({ session, book, onSignOut }) {
   )
 }
 
+// ─── CONFIG ERROR SCREEN ──────────────────────────────────────────────────────
+function ConfigError() {
+  return (
+    <div style={{ ...S.root, paddingBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, minHeight: '100vh' }}>
+      <div style={{ width: '100%', maxWidth: 380 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.orange, marginBottom: 12 }}>Missing configuration</div>
+        <div style={{ ...S.card, borderLeft: `3px solid ${C.orange}` }}>
+          <p style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, margin: '0 0 14px' }}>
+            The <code style={{ color: C.orange }}>VITE_SUPABASE_ANON_KEY</code> environment variable is not set.
+          </p>
+          <p style={{ fontSize: 12, color: C.textLow, lineHeight: 1.7, margin: 0 }}>
+            In Netlify → Site configuration → Environment variables, add:<br /><br />
+            <code style={{ color: C.text, fontSize: 11 }}>VITE_SUPABASE_ANON_KEY</code><br />
+            <span style={{ fontSize: 11 }}>Value: your anon key from Supabase → Settings → API</span><br /><br />
+            Then redeploy.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [session, setSession] = useState(undefined)  // undefined = loading
+  // Hooks must always run — conditional returns come AFTER
+  const [session, setSession] = useState(undefined)
   const [book, setBook] = useState(null)
+  const [allBooks, setAllBooks] = useState([])
   const [checkingBook, setCheckingBook] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => setSession(s ?? null))
+    if (missingConfig) return
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => setSession(s ?? null))
+      .catch(() => setSession(null))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s ?? null)
       if (!s) setBook(null)
@@ -1060,30 +1097,37 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!session) return
+    if (missingConfig || !session) return
     setCheckingBook(true)
-    supabase.from('books').select('*').eq('owner_user_id', session.user.id).limit(1)
+    supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
       .then(({ data }) => {
-        if (data?.length > 0) setBook(data[0])
+        const books = data || []
+        setAllBooks(books)
+        if (books.length > 0) setBook(books[0])
         setCheckingBook(false)
       })
   }, [session])
 
   async function signOut() {
+    if (missingConfig) return
     await supabase.auth.signOut()
     setBook(null)
   }
 
+  // Conditional renders after all hooks
+  if (missingConfig) return <ConfigError />
+
   if (session === undefined || checkingBook) {
     return (
-      <div style={{ ...S.root, paddingBottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+      <div style={{ ...S.root, paddingBottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', gap: 16 }}>
         <Spinner />
+        <div style={{ fontSize: 12, color: C.textLow }}>Loading Lighthouse Trail…</div>
       </div>
     )
   }
 
   if (!session) return <AuthScreen />
-  if (!book) return <BookSetup session={session} onComplete={setBook} />
+  if (!book) return <BookSetup session={session} onComplete={b => { setAllBooks(prev => [...prev, b]); setBook(b) }} />
 
-  return <MainApp session={session} book={book} onSignOut={signOut} />
+  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={setBook} onSignOut={signOut} />
 }

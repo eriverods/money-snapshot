@@ -304,6 +304,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
                   <select style={{ ...S.inp, flex: 1 }} value={nt.type} onChange={e => updateNewTx(i, 'type', e.target.value)}>
                     <option value="expense">Expense</option>
                     <option value="income">Income</option>
+                    <option value="transfer">Transfer</option>
                   </select>
                   <input style={{ ...S.inp, flex: 1 }} type="number" step="0.01" placeholder="0.00" value={nt.amount} onChange={e => updateNewTx(i, 'amount', e.target.value)} />
                   <button onClick={() => removeNewTx(i)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18 }}>×</button>
