@@ -57,3 +57,45 @@ create table savings_contributions (
 - Contribution modal: amount, note, date
 - Goals tab icon: `◈`, label: `Goals`
 
+## Current Phase: Phase 4 — Push Notifications
+**Status: In Progress (started 2026-05-30)**
+
+### Architecture:
+- Service worker (`public/sw.js`) handles `push` + `notificationclick` events
+- Edge Function (`supabase/functions/send-notifications/index.ts`) runs hourly, sends to users whose `notify_hour_utc` matches current UTC hour
+- Bell icon (🔔) in header opens `NotificationSheet` for per-device enable/disable + per-book settings
+- `VITE_VAPID_PUBLIC_KEY` env var required in Vite + Netlify
+
+### DB tables to create:
+```sql
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  book_id uuid not null references books(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth_key text not null,
+  created_at timestamptz default now()
+);
+
+create table notification_settings (
+  book_id uuid primary key references books(id) on delete cascade,
+  low_balance_threshold numeric not null default 200,
+  bill_reminders boolean not null default true,
+  low_balance_alerts boolean not null default true,
+  notify_hour_utc int not null default 9,
+  updated_at timestamptz default now()
+);
+```
+
+### RLS policies needed:
+- `push_subscriptions`: `user_id = auth.uid()`
+- `notification_settings`: `book_id in (select id from books where owner_user_id = auth.uid())`
+
+### Supabase setup steps (user must do):
+1. Generate VAPID keys: `npx web-push generate-vapid-keys`
+2. Set Edge Function secrets: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (mailto:email)
+3. Deploy function: `supabase functions deploy send-notifications`
+4. Set cron: run `send-notifications` every hour (`0 * * * *`)
+5. Set `VITE_VAPID_PUBLIC_KEY` in Netlify env vars
+

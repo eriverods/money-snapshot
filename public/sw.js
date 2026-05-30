@@ -13,6 +13,31 @@ self.addEventListener('activate', e => {
   )
 })
 
+self.addEventListener('push', e => {
+  if (!e.data) return
+  const { title, body, url } = e.data.json()
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: url || '/' },
+    })
+  )
+})
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  const target = e.notification.data?.url || '/'
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const existing = list.find(c => c.url.includes(self.location.origin))
+      if (existing) return existing.focus().then(c => c.navigate(target))
+      return clients.openWindow(target)
+    })
+  )
+})
+
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return
   const url = new URL(e.request.url)

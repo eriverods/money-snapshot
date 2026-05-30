@@ -867,6 +867,182 @@ function CheckInBanner({ onReconcile, onQuickAdd, onDismiss }) {
   )
 }
 
+// ─── NOTIFICATION SHEET ───────────────────────────────────────────────────────
+const sheetStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }
+const sheetInner = { background: C.surface, borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }
+const sheetHeader = { padding: '18px 18px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+}
+
+function NotificationSheet({ session, bookId, onClose }) {
+  const [permission, setPermission] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied')
+  const [subscribed, setSubscribed] = useState(false)
+  const [settings, setSettings] = useState({ bill_reminders: true, low_balance_alerts: true, low_balance_threshold: '200', notify_hour_utc: '9' })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+  const supported = typeof Notification !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
+
+  useEffect(() => {
+    async function load() {
+      // Load existing settings
+      const { data: s } = await supabase.from('notification_settings').select('*').eq('book_id', bookId).maybeSingle()
+      if (s) setSettings({ bill_reminders: s.bill_reminders, low_balance_alerts: s.low_balance_alerts, low_balance_threshold: String(s.low_balance_threshold), notify_hour_utc: String(s.notify_hour_utc) })
+      // Check if already subscribed
+      if (supported && Notification.permission === 'granted') {
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) {
+          const { data } = await supabase.from('push_subscriptions').select('id').eq('endpoint', sub.endpoint).maybeSingle()
+          setSubscribed(!!data)
+        }
+      }
+      setLoading(false)
+    }
+    load()
+  }, [bookId])
+
+  async function handleEnable() {
+    setErr(null)
+    const perm = await Notification.requestPermission()
+    setPermission(perm)
+    if (perm !== 'granted') { setErr('Notification permission denied'); return }
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+    if (!vapidKey) { setErr('VAPID key not configured (set VITE_VAPID_PUBLIC_KEY)'); return }
+    setSaving(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) })
+      const { endpoint, keys: { p256dh, auth } } = sub.toJSON()
+      const { error } = await supabase.from('push_subscriptions').upsert(
+        { user_id: session.user.id, book_id: bookId, endpoint, p256dh, auth_key: auth },
+        { onConflict: 'endpoint' }
+      )
+      if (error) throw new Error(error.message)
+      setSubscribed(true)
+    } catch (e) {
+      setErr(e.message)
+    }
+    setSaving(false)
+  }
+
+  async function handleDisable() {
+    setSaving(true)
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (sub) {
+      await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+      await sub.unsubscribe()
+    }
+    setSubscribed(false)
+    setSaving(false)
+  }
+
+  async function handleSaveSettings() {
+    setSaving(true)
+    setErr(null)
+    const threshold = parseFloat(settings.low_balance_threshold)
+    const hour = parseInt(settings.notify_hour_utc)
+    if (isNaN(threshold) || threshold < 0) { setErr('Enter a valid threshold'); setSaving(false); return }
+    if (isNaN(hour) || hour < 0 || hour > 23) { setErr('Enter an hour between 0 and 23'); setSaving(false); return }
+    const { error } = await supabase.from('notification_settings').upsert(
+      { book_id: bookId, bill_reminders: settings.bill_reminders, low_balance_alerts: settings.low_balance_alerts, low_balance_threshold: threshold, notify_hour_utc: hour },
+      { onConflict: 'book_id' }
+    )
+    if (error) setErr(error.message)
+    setSaving(false)
+  }
+
+  return (
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={sheetInner} onClick={e => e.stopPropagation()}>
+        <div style={sheetHeader}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Notifications</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '16px 18px', overflowY: 'auto' }}>
+          {!supported ? (
+            <div style={{ color: C.textMid, fontSize: 13 }}>Push notifications are not supported in this browser.</div>
+          ) : loading ? (
+            <div style={{ color: C.textLow, fontSize: 13 }}>Loading…</div>
+          ) : (
+            <>
+              {/* Enable / disable */}
+              <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{subscribed ? '🔔 Notifications on' : '🔕 Notifications off'}</div>
+                  <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>
+                    {subscribed ? 'This device will receive alerts' : 'Enable to get bill & balance alerts'}
+                  </div>
+                </div>
+                {subscribed
+                  ? <button onClick={handleDisable} disabled={saving} style={{ ...S.btn(C.surfaceHigh, true), padding: '8px 14px', fontSize: 12 }}>Turn off</button>
+                  : <button onClick={handleEnable} disabled={saving || permission === 'denied'} style={{ ...S.btn(), padding: '8px 14px', fontSize: 12, opacity: permission === 'denied' ? 0.5 : 1 }}>
+                      {permission === 'denied' ? 'Blocked' : saving ? 'Enabling…' : 'Enable'}
+                    </button>
+                }
+              </div>
+              {permission === 'denied' && (
+                <div style={{ fontSize: 11, color: C.orange, marginTop: -8, marginBottom: 12 }}>
+                  Notifications are blocked in your browser settings. Allow them and try again.
+                </div>
+              )}
+
+              {/* Settings */}
+              <div style={S.secHead()}>Alert Settings</div>
+
+              <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Bill reminders</div>
+                  <div style={{ fontSize: 11, color: C.textLow }}>Alert when a bill is due tomorrow</div>
+                </div>
+                <button onClick={() => setSettings(p => ({ ...p, bill_reminders: !p.bill_reminders }))}
+                  style={{ background: settings.bill_reminders ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 12, width: 44, height: 24, cursor: 'pointer', transition: 'background 0.2s' }} />
+              </div>
+
+              <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Low balance alerts</div>
+                  <div style={{ fontSize: 11, color: C.textLow }}>Alert when account balance drops below threshold</div>
+                </div>
+                <button onClick={() => setSettings(p => ({ ...p, low_balance_alerts: !p.low_balance_alerts }))}
+                  style={{ background: settings.low_balance_alerts ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 12, width: 44, height: 24, cursor: 'pointer', transition: 'background 0.2s' }} />
+              </div>
+
+              {settings.low_balance_alerts && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={S.lbl}>Low balance threshold (CAD)</div>
+                  <input style={S.inp} type="number" inputMode="decimal" placeholder="200"
+                    value={settings.low_balance_threshold} onChange={e => setSettings(p => ({ ...p, low_balance_threshold: e.target.value }))} />
+                </div>
+              )}
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={S.lbl}>Send notifications at (UTC hour, 0–23)</div>
+                <input style={S.inp} type="number" inputMode="numeric" placeholder="9" min="0" max="23"
+                  value={settings.notify_hour_utc} onChange={e => setSettings(p => ({ ...p, notify_hour_utc: e.target.value }))} />
+                <div style={{ fontSize: 10, color: C.textLow, marginTop: 4 }}>
+                  e.g. 9 = 9:00 AM UTC · 14 = 10:00 AM EST · 16 = 12:00 PM EST
+                </div>
+              </div>
+
+              {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{err}</div>}
+              <button onClick={handleSaveSettings} disabled={saving} style={{ ...S.btn(), width: '100%', opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : 'Save Settings'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
@@ -878,6 +1054,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showAddTx, setShowAddTx] = useState(false)
   const [showCheckin, setShowCheckin] = useState(false)
   const [showBookPicker, setShowBookPicker] = useState(false)
+  const [showNotifSheet, setShowNotifSheet] = useState(false)
 
   const today = todayStr()
 
@@ -967,9 +1144,14 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               {allBooks.length > 1 && <span style={{ fontSize: 9, color: C.purple }}>▾</span>}
             </button>
           </div>
-          <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
-            Sign out
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={() => setShowNotifSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
+              🔔
+            </button>
+            <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1054,6 +1236,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           onSave={() => { setShowAddTx(false); loadData() }}
           onClose={() => setShowAddTx(false)}
         />
+      )}
+      {showNotifSheet && (
+        <NotificationSheet session={session} bookId={book.id} onClose={() => setShowNotifSheet(false)} />
       )}
     </div>
   )
