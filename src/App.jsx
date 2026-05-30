@@ -158,25 +158,17 @@ function AuthScreen() {
 // ─── BOOK SETUP ───────────────────────────────────────────────────────────────
 function BookSetup({ session, onComplete }) {
   const [bookName, setBookName] = useState('Personal')
-  const [hasOrphans, setHasOrphans] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-
-  useEffect(() => {
-    supabase.from('cashflow_transactions').select('id').is('book_id', null).limit(1)
-      .then(({ data }) => setHasOrphans(data?.length > 0))
-  }, [])
 
   async function create(migrate) {
     setLoading(true); setError(null)
     try {
-      // Use a SECURITY DEFINER function to bypass RLS for book creation + migration
       const { data: bookId, error: fnErr } = await supabase.rpc('create_personal_book', {
         p_name: bookName,
         p_migrate: migrate,
       })
       if (fnErr) throw fnErr
-      // Fetch the created book
       const { data: book, error: fetchErr } = await supabase
         .from('books').select('*').eq('id', bookId).single()
       if (fetchErr) throw fetchErr
@@ -195,25 +187,17 @@ function BookSetup({ session, onComplete }) {
           <div style={S.lbl}>Book name</div>
           <input style={{ ...S.inp, marginBottom: 14 }} value={bookName} onChange={e => setBookName(e.target.value)} />
           {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{error}</div>}
-          {hasOrphans === null ? <Spinner /> : hasOrphans ? (
-            <>
-              <div style={{ fontSize: 12, color: C.orange, background: C.orange + '18', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
-                Existing data found. Import it into your new book?
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button style={{ ...S.btn(C.green), flex: 1 }} onClick={() => create(true)} disabled={loading}>
-                  {loading ? 'Setting up…' : 'Yes, import data'}
-                </button>
-                <button style={{ ...S.btn(C.surfaceHigh, true), flex: 1 }} onClick={() => create(false)} disabled={loading}>
-                  Start fresh
-                </button>
-              </div>
-            </>
-          ) : (
-            <button style={{ ...S.btn(), width: '100%' }} onClick={() => create(false)} disabled={loading}>
-              {loading ? 'Creating…' : 'Create book'}
+          <div style={{ fontSize: 12, color: C.orange, background: C.orange + '18', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+            Import existing accounts & transactions into this book?
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ ...S.btn(C.green), flex: 1 }} onClick={() => create(true)} disabled={loading}>
+              {loading ? 'Setting up…' : 'Yes, import data'}
             </button>
-          )}
+            <button style={{ ...S.btn(C.surfaceHigh, true), flex: 1 }} onClick={() => create(false)} disabled={loading}>
+              Start fresh
+            </button>
+          </div>
         </div>
       </div>
     </div>
