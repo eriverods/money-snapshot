@@ -207,7 +207,7 @@ function BookSetup({ session, onComplete }) {
 // ─── ADD TRANSACTION MODAL ────────────────────────────────────────────────────
 function AddTxModal({ bookId, accounts, onSave, onClose }) {
   const today = todayStr()
-  const [form, setForm] = useState({ label: '', amount: '', type: 'out', account: accounts[0]?.name || '', date: today, recurrence: 'once', end_date: '' })
+  const [form, setForm] = useState({ label: '', amount: '', type: 'expense', account: accounts[0]?.name || '', date: today, recurrence: 'once', end_date: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -237,8 +237,9 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
           <div>
             <div style={S.lbl}>Type</div>
             <select style={S.sel} value={form.type} onChange={e => set('type', e.target.value)}>
-              <option value="out">Expense</option>
-              <option value="in">Income</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
             </select>
           </div>
           <div>
@@ -280,8 +281,8 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
           )}
         </div>
         {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{error}</div>}
-        <button style={{ ...S.btn(form.type === 'in' ? C.green : C.orange), width: '100%' }} onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : form.type === 'in' ? 'Add Income' : 'Add Expense'}
+        <button style={{ ...S.btn(form.type === 'income' ? C.green : C.orange), width: '100%' }} onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : form.type === 'income' ? 'Add Income' : form.type === 'transfer' ? 'Add Transfer' : 'Add Expense'}
         </button>
       </div>
     </div>
@@ -317,7 +318,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile }) {
 
   const inc30 = useMemo(() => {
     let s = 0
-    for (const tx of transactions.filter(t => t.type === 'in')) {
+    for (const tx of transactions.filter(t => t.type === 'income')) {
       expandTx(tx, today, end30str).forEach(() => { s += parseFloat(tx.amount) || 0 })
     }
     return s
@@ -325,7 +326,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile }) {
 
   const exp30 = useMemo(() => {
     let s = 0
-    for (const tx of transactions.filter(t => t.type !== 'in')) {
+    for (const tx of transactions.filter(t => t.type === 'expense')) {
       expandTx(tx, today, end30str).forEach(() => { s += parseFloat(tx.amount) || 0 })
     }
     return s
@@ -380,7 +381,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile }) {
           <div style={{ ...S.lbl, marginBottom: 10 }}>Next 14 days</div>
           {upcoming.map((item, i) => {
             const ov = item.override
-            const isIncome = item.tx.type === 'in'
+            const isIncome = item.tx.type === 'income'
             const amt = ov?.action === 'modified' ? ov.modified_amount : item.tx.amount
             const state = ov?.action || 'projected'
             return (
@@ -451,7 +452,7 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
       const amt = inst.override?.action === 'modified'
         ? (parseFloat(inst.override.modified_amount) || 0)
         : (parseFloat(inst.tx.amount) || 0)
-      const signed = inst.tx.type === 'in' ? amt : -amt
+      const signed = inst.tx.type === 'income' ? amt : -amt
       let balAfter = null
       if (inst.date >= today && inst.state !== 'skipped') {
         bal += signed
@@ -513,8 +514,9 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
         </select>
         <select style={{ ...S.sel, flex: 1 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
           <option value="">All types</option>
-          <option value="in">Income</option>
-          <option value="out">Expenses</option>
+          <option value="income">Income</option>
+          <option value="expense">Expenses</option>
+          <option value="transfer">Transfers</option>
         </select>
       </div>
 
@@ -541,7 +543,7 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
 
             {/* Instances */}
             {insts.map((inst, i) => {
-              const isIncome = inst.tx.type === 'in'
+              const isIncome = inst.tx.type === 'income'
               const isApproved = inst.state === 'approved'
               const isSkipped = inst.state === 'skipped'
               const isModified = inst.state === 'modified'
@@ -615,7 +617,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
         const ov = getOverride(overrides, tx.id, d)
         if (ov?.action === 'skipped') continue
         const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
-        const signed = tx.type === 'in' ? amt : -amt
+        const signed = tx.type === 'income' ? amt : -amt
         map[d] = (map[d] || 0) + signed
       }
     }
@@ -820,7 +822,7 @@ function TransactionsTab({ transactions, bookId, onRefresh }) {
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
               <span style={{ fontSize: 13, fontWeight: 600 }}>{tx.label}</span>
               <RecurBadge r={tx.recurrence} />
-              {tx.type === 'in'
+              {tx.type === 'income'
                 ? <span style={{ fontSize: 9, background: C.green + '22', color: C.green, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>INCOME</span>
                 : <span style={{ fontSize: 9, background: C.red + '22', color: C.red, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>EXPENSE</span>
               }
@@ -831,8 +833,8 @@ function TransactionsTab({ transactions, bookId, onRefresh }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: tx.type === 'in' ? C.green : C.red }}>
-              {tx.type === 'in' ? '+' : '-'}{fmt(tx.amount)}
+            <span style={{ fontSize: 14, fontWeight: 700, color: tx.type === 'income' ? C.green : C.red }}>
+              {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
             </span>
             <button onClick={() => deleteTx(tx.id)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
           </div>

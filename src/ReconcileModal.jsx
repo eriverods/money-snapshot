@@ -119,13 +119,13 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
       const amt = state === 'modified'
         ? (parseFloat(amounts[inst.key]) || 0)
         : (parseFloat(inst.tx.amount) || 0)
-      const signed = inst.tx.type === 'in' ? amt : -amt
+      const signed = inst.tx.type === 'income' ? amt : -amt
       if (state === 'approved' || state === 'modified') total += signed
     }
     // Add new transactions
     for (const nt of newTxs) {
       const amt = parseFloat(nt.amount) || 0
-      total += nt.type === 'in' ? amt : -amt
+      total += nt.type === 'income' ? amt : -amt
     }
     const expected = baselineBalance + total
     const actual = parseFloat(actualBalance) || 0
@@ -133,7 +133,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
   }, [instances, states, amounts, newTxs, baselineBalance, actualBalance])
 
   function addNewTx() {
-    setNewTxs(prev => [...prev, { label: '', amount: '', type: 'out' }])
+    setNewTxs(prev => [...prev, { label: '', amount: '', type: 'expense' }])
   }
 
   function updateNewTx(i, field, val) {
@@ -246,7 +246,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
                 const isSkipped = state === 'skipped'
                 const isApproved = state === 'approved'
                 const isModified = state === 'modified'
-                const isIncome = inst.tx.type === 'in'
+                const isIncome = inst.tx.type === 'income'
                 return (
                   <div key={inst.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${C.border}`, opacity: isSkipped ? 0.4 : 1 }}>
                     {/* Approve checkbox */}
@@ -302,8 +302,9 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
                 <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
                   <input style={{ ...S.inp, flex: 2 }} placeholder="Label" value={nt.label} onChange={e => updateNewTx(i, 'label', e.target.value)} />
                   <select style={{ ...S.inp, flex: 1 }} value={nt.type} onChange={e => updateNewTx(i, 'type', e.target.value)}>
-                    <option value="out">Expense</option>
-                    <option value="in">Income</option>
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                    <option value="transfer">Transfer</option>
                   </select>
                   <input style={{ ...S.inp, flex: 1 }} type="number" step="0.01" placeholder="0.00" value={nt.amount} onChange={e => updateNewTx(i, 'amount', e.target.value)} />
                   <button onClick={() => removeNewTx(i)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18 }}>×</button>
