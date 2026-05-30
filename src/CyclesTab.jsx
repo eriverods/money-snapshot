@@ -1,5 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from './lib/supabase'
+import {
+  findApprovedMainIncome,
+  createCycleFromApprovedPaycheck,
+  calculateCycleWindow,
+  identifyFixedBillsInWindow,
+  suggestEnvelopeAllocations,
+} from './lib/cycleLogic'
 
 const C = {
   bg: '#0a0f1a', surface: '#111827', surfaceHigh: '#1e293b',
@@ -407,6 +414,181 @@ function CreateCycleModal({ bookId, accounts, transactions, templates, onSave, o
   )
 }
 
+// ─── AUTO-CREATE PREVIEW MODAL ────────────────────────────────────────────────
+function AutoCreatePreviewModal({ bookId, accounts, transactions, templates, overrides, onCreated, onClose }) {
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState(null)
+
+  const approvedIncome = useMemo(() => findApprovedMainIncome(transactions, overrides), [transactions, overrides])
+  const cycleWindow = useMemo(() => approvedIncome ? calculateCycleWindow(approvedIncome.date) : null, [approvedIncome])
+
+  const previewData = useMemo(() => {
+    if (!approvedIncome || !cycleWindow) return null
+    const { startDate, endDate } = cycleWindow
+
+    const bills = identifyFixedBillsInWindow(transactions, startDate, endDate)
+    const totalBills = bills.reduce((s, b) => s + b.amount, 0)
+
+    const primaryAcct = accounts.find(a => a.name?.toLowerCase().includes('simplii')) ||
+      accounts.find(a => a.type !== 'credit') ||
+      accounts[0]
+    const startBal = parseFloat(primaryAcct?.balance || 0)
+    const mainIncome = parseFloat(approvedIncome.tx.amount) || 0
+    const variable = startBal + mainIncome - totalBills
+
+    const allocs = suggestEnvelopeAllocations(variable, templates)
+    const daysLeft = Math.max(1, Math.round((new Date(endDate + 'T23:59:59') - new Date()) / 86400000) + 1)
+
+    return {
+      startDate,
+      endDate,
+      daysLeft,
+      startingBalance: startBal,
+      incomeAmount: mainIncome,
+      bills,
+      totalBills,
+      variable,
+      allocations: allocs.map(a => ({ name: a.name, suggested: a.allocated_amount })),
+    }
+  }, [approvedIncome, cycleWindow, transactions, accounts, templates])
+
+  async function handleCreate() {
+    setCreating(true)
+    setError(null)
+    const result = await createCycleFromApprovedPaycheck(bookId, accounts, transactions, templates, overrides)
+    setCreating(false)
+
+    if (result.success) {
+      onCreated()
+    } else {
+      setError(result.error)
+    }
+  }
+
+  if (!previewData) {
+    return (
+      <div style={S.sheet} onClick={onClose}>
+        <div style={S.sheetInner} onClick={e => e.stopPropagation()}>
+          <div style={S.sheetHeader}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>Loading preview…</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={S.sheet} onClick={onClose}>
+      <div style={S.sheetInner} onClick={e => e.stopPropagation()}>
+        <div style={S.sheetHeader}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>Ready to create cycle?</div>
+            <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>Review details before committing</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+
+        <div style={{ overflowY: 'auto', flex: 1, padding: '14px 16px' }}>
+          {/* Cycle dates & days left */}
+          <div style={{ ...S.card, background: C.surfaceHigh, marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>Cycle period</div>
+                <div style={{ fontSize: 14, fontWeight: 700, marginTop: 3 }}>
+                  {new Date(previewData.startDate + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                  {' – '}
+                  {new Date(previewData.endDate + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{previewData.daysLeft}</div>
+                <div style={{ fontSize: 10, color: C.textLow }}>days</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Safe to spend summary */}
+          <div style={{ ...S.card, padding: '12px 14px' }}>
+            <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Safe to spend before next income</div>
+            {[
+              { label: 'Starting balance', value: fmt(previewData.startingBalance), color: C.text },
+              { label: '+ Income', value: `+${fmt(previewData.incomeAmount)}`, color: C.green },
+              { label: '− Fixed bills', value: `−${fmt(previewData.totalBills)}`, color: C.red },
+            ].map((row, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ fontSize: 13, color: C.textMid }}>{row.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: row.color }}>{row.value}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, padding: '10px 12px', background: previewData.variable < 0 ? C.redBg : C.greenBg, border: `1px solid ${previewData.variable < 0 ? C.red : C.green}`, borderRadius: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: previewData.variable < 0 ? C.red : C.green, textTransform: 'uppercase', letterSpacing: 1 }}>Safe to spend</span>
+              <span style={{ fontSize: 18, fontWeight: 700, color: previewData.variable < 0 ? C.red : C.green }}>{fmt(previewData.variable)}</span>
+            </div>
+          </div>
+
+          {/* Bills breakdown */}
+          {previewData.bills.length > 0 && (
+            <>
+              <div style={{ ...S.secHead(C.red), marginBottom: 8, marginTop: 16 }}>Fixed bills this cycle</div>
+              <div style={S.card}>
+                {previewData.bills.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < previewData.bills.length - 1 ? `1px solid ${C.border}` : 'none', fontSize: 13 }}>
+                    <div>
+                      <span style={{ fontWeight: 500 }}>{b.label}</span>
+                      <div style={{ fontSize: 10, color: C.textLow, marginTop: 2 }}>
+                        {new Date(b.date + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </div>
+                    </div>
+                    <span style={{ color: C.red }}>−{fmt(b.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Suggested envelope allocations */}
+          {previewData.allocations.length > 0 && (
+            <>
+              <div style={{ ...S.secHead(C.purple), marginBottom: 8, marginTop: 16 }}>Suggested envelope amounts</div>
+              <div style={S.card}>
+                {previewData.allocations.map((a, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < previewData.allocations.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{a.name}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.purple }}>{fmt(a.suggested)}</span>
+                  </div>
+                ))}
+              </div>
+              {previewData.variable < 0 && (
+                <div style={{ ...S.card, background: C.redBg, border: `1px solid ${C.border}`, marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: C.red }}>
+                    ⚠️ Budget is negative. Fixed bills exceed available funds. Create anyway?
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: '12px 16px 24px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          {error && (
+            <div style={{ ...S.card, background: C.redBg, border: `1px solid ${C.border}`, marginBottom: 10, fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            style={{ ...S.btn(C.green), width: '100%', opacity: creating ? 0.7 : 1 }}
+          >
+            {creating ? 'Creating…' : 'Create cycle ✓'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN CYCLES TAB ─────────────────────────────────────────────────────────
 export default function CyclesTab({ bookId, accounts, transactions }) {
   const today = todayStr()
@@ -416,18 +598,22 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [showAutoPreview, setShowAutoPreview] = useState(false)
+  const [overrides, setOverrides] = useState([])
 
   useEffect(() => { load() }, [bookId])
 
   async function load() {
     setLoading(true)
-    const [{ data: cycles }, { data: tmpl }] = await Promise.all([
+    const [{ data: cycles }, { data: tmpl }, { data: ovr }] = await Promise.all([
       supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(1),
       supabase.from('envelope_templates').select('*').eq('book_id', bookId).order('display_order'),
+      supabase.from('cashflow_overrides').select('*').eq('book_id', bookId),
     ])
     const latest = cycles?.[0] || null
     setCycle(latest)
     setTemplates(tmpl || [])
+    setOverrides(ovr || [])
     if (latest) {
       const { data: envs } = await supabase.from('cycle_envelopes').select('*').eq('cycle_id', latest.id)
       setEnvelopes(envs || [])
@@ -445,6 +631,8 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
       <div style={{ width: 24, height: 24, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.purple}`, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
+
+  const approvedMainIncome = useMemo(() => findApprovedMainIncome(transactions, overrides), [transactions, overrides])
 
   // Cycle stats
   const stats = cycle ? (() => {
@@ -482,8 +670,16 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
           <div style={{ fontSize: 13, color: C.textLow, marginBottom: 24, lineHeight: 1.5 }}>
             Set up your first cycle to start tracking envelopes and safe-to-spend
           </div>
+          {approvedMainIncome ? (
+            <>
+              <button style={{ ...S.btn(C.green), marginBottom: 12, width: '100%', maxWidth: 240 }} onClick={() => setShowAutoPreview(true)}>
+                Auto-create from paycheck ✓
+              </button>
+              <div style={{ fontSize: 11, color: C.textLow, marginBottom: 16 }}>or</div>
+            </>
+          ) : null}
           <button style={{ ...S.btn(C.purple), marginBottom: 16 }} onClick={() => setShowCreate(true)}>
-            Start new cycle
+            Start new cycle manually
           </button>
           <div>
             <button
@@ -594,6 +790,13 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
           bookId={bookId} accounts={accounts} transactions={transactions} templates={templates}
           onSave={() => { setShowCreate(false); load() }}
           onClose={() => setShowCreate(false)}
+        />
+      )}
+      {showAutoPreview && (
+        <AutoCreatePreviewModal
+          bookId={bookId} accounts={accounts} transactions={transactions} templates={templates} overrides={overrides}
+          onCreated={() => { setShowAutoPreview(false); load() }}
+          onClose={() => setShowAutoPreview(false)}
         />
       )}
       {showTemplates && (
