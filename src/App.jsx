@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
+import CyclesTab from './CyclesTab'
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const C = {
@@ -939,8 +940,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
   const tabs = [
     { id: 'overview', label: 'Home', icon: '⌂' },
+    { id: 'cycles', label: 'Cycles', icon: '⊙' },
     { id: 'agenda', label: 'Agenda', icon: '≡' },
-    { id: 'calendar', label: 'Calendar', icon: '▦' },
+    { id: 'calendar', label: 'Cal', icon: '▦' },
     { id: 'accounts', label: 'Accounts', icon: '◎' },
     { id: 'transactions', label: 'Manage', icon: '✦' },
   ]
@@ -999,6 +1001,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           <>
             {activeTab === 'overview' && (
               <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides} onReconcile={setReconcileAccount} />
+            )}
+            {activeTab === 'cycles' && (
+              <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />
             )}
             {activeTab === 'agenda' && (
               <AgendaTab accounts={accounts} transactions={transactions} overrides={overrides} onOverrideChange={loadData} />
