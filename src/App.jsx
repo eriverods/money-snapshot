@@ -890,19 +890,25 @@ function NotificationSheet({ session, bookId, onClose }) {
 
   useEffect(() => {
     async function load() {
-      // Load existing settings
-      const { data: s } = await supabase.from('notification_settings').select('*').eq('book_id', bookId).maybeSingle()
-      if (s) setSettings({ bill_reminders: s.bill_reminders, low_balance_alerts: s.low_balance_alerts, low_balance_threshold: String(s.low_balance_threshold), notify_hour_utc: String(s.notify_hour_utc) })
-      // Check if already subscribed
-      if (supported && Notification.permission === 'granted') {
-        const reg = await navigator.serviceWorker.ready
-        const sub = await reg.pushManager.getSubscription()
-        if (sub) {
-          const { data } = await supabase.from('push_subscriptions').select('id').eq('endpoint', sub.endpoint).maybeSingle()
-          setSubscribed(!!data)
+      try {
+        const { data: s } = await supabase.from('notification_settings').select('*').eq('book_id', bookId).maybeSingle()
+        if (s) setSettings({ bill_reminders: s.bill_reminders, low_balance_alerts: s.low_balance_alerts, low_balance_threshold: String(s.low_balance_threshold), notify_hour_utc: String(s.notify_hour_utc) })
+        if (supported && Notification.permission === 'granted') {
+          const swReady = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('sw timeout')), 3000)),
+          ])
+          const sub = await swReady.pushManager.getSubscription()
+          if (sub) {
+            const { data } = await supabase.from('push_subscriptions').select('id').eq('endpoint', sub.endpoint).maybeSingle()
+            setSubscribed(!!data)
+          }
         }
+      } catch (_) {
+        // SW not ready or settings failed — show UI anyway
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     load()
   }, [bookId])
