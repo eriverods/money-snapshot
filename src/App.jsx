@@ -711,10 +711,15 @@ function CalendarTab({ accounts, transactions, overrides }) {
 }
 
 // ─── ACCOUNTS TAB ─────────────────────────────────────────────────────────────
-function AccountsTab({ accounts, onReconcile, onRefresh }) {
+function AccountsTab({ accounts, bookId, onReconcile, onRefresh }) {
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newType, setNewType] = useState('checking')
+  const [newBalance, setNewBalance] = useState('')
+  const [addErr, setAddErr] = useState(null)
 
   async function saveEdit(id) {
     setSaving(true)
@@ -724,11 +729,30 @@ function AccountsTab({ accounts, onReconcile, onRefresh }) {
     onRefresh()
   }
 
+  async function addAccount() {
+    if (!newName.trim()) { setAddErr('Enter an account name'); return }
+    setSaving(true); setAddErr(null)
+    const { error } = await supabase.from('cashflow_accounts').insert({
+      book_id: bookId, name: newName.trim(), type: newType,
+      balance: parseFloat(newBalance) || 0,
+      baseline_date: todayStr(),
+    })
+    setSaving(false)
+    if (error) { setAddErr(error.message); return }
+    setShowAdd(false); setNewName(''); setNewBalance(''); setNewType('checking')
+    onRefresh()
+  }
+
   return (
     <div>
       <div style={{ fontSize: 11, color: C.textLow, marginBottom: 14 }}>
         Tap a balance to reconcile it against your actual bank balance.
       </div>
+      {accounts.length === 0 && !showAdd && (
+        <div style={{ textAlign: 'center', padding: '32px 0 16px', color: C.textLow, fontSize: 13 }}>
+          No accounts yet. Add one to get started.
+        </div>
+      )}
       {accounts.map(a => {
         const bal = parseFloat(a.balance) || 0
         const isNeg = bal < 0
@@ -763,6 +787,41 @@ function AccountsTab({ accounts, onReconcile, onRefresh }) {
           </div>
         )
       })}
+
+      {showAdd ? (
+        <div style={S.card}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12 }}>New Account</div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={S.lbl}>Name</div>
+            <input style={S.inp} placeholder="e.g. Chequing" value={newName} onChange={e => setNewName(e.target.value)} autoFocus />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={S.lbl}>Type</div>
+              <select style={S.sel} value={newType} onChange={e => setNewType(e.target.value)}>
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+                <option value="credit">Credit</option>
+              </select>
+            </div>
+            <div>
+              <div style={S.lbl}>Current Balance</div>
+              <input style={S.inp} type="number" inputMode="decimal" placeholder="0.00" value={newBalance} onChange={e => setNewBalance(e.target.value)} />
+            </div>
+          </div>
+          {addErr && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{addErr}</div>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button style={{ ...S.btn(C.green), flex: 1 }} onClick={addAccount} disabled={saving}>
+              {saving ? 'Saving…' : 'Add Account'}
+            </button>
+            <button style={{ ...S.btn(C.surfaceHigh, true) }} onClick={() => { setShowAdd(false); setAddErr(null) }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button style={{ ...S.btn(), width: '100%', marginTop: 4 }} onClick={() => setShowAdd(true)}>
+          + Add Account
+        </button>
+      )}
     </div>
   )
 }
@@ -1214,7 +1273,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               <CalendarTab accounts={accounts} transactions={transactions} overrides={overrides} />
             )}
             {activeTab === 'accounts' && (
-              <AccountsTab accounts={accounts} onReconcile={setReconcileAccount} onRefresh={loadData} />
+              <AccountsTab accounts={accounts} bookId={book.id} onReconcile={setReconcileAccount} onRefresh={loadData} />
             )}
             {activeTab === 'transactions' && (
               <TransactionsTab transactions={transactions} bookId={book.id} onRefresh={loadData} />
