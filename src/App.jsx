@@ -926,6 +926,147 @@ function CheckInBanner({ onReconcile, onQuickAdd, onDismiss }) {
   )
 }
 
+// ─── SHARE SHEET ─────────────────────────────────────────────────────────────
+function ShareSheet({ book, session, onClose }) {
+  const [members, setMembers] = useState([])
+  const [invites, setInvites] = useState([])
+  const [email, setEmail] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+  const [msg, setMsg] = useState(null)
+  const isOwner = book.owner_user_id === session.user.id
+
+  async function load() {
+    const [{ data: m }, { data: inv }] = await Promise.all([
+      supabase.from('book_members').select('*').eq('book_id', book.id),
+      supabase.from('book_invites').select('*').eq('book_id', book.id).eq('status', 'pending'),
+    ])
+    setMembers(m || [])
+    setInvites(inv || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [book.id])
+
+  async function sendInvite() {
+    const e = email.trim().toLowerCase()
+    if (!e || !e.includes('@')) { setErr('Enter a valid email'); return }
+    if (e === session.user.email) { setErr("That's your own email"); return }
+    setSaving(true); setErr(null); setMsg(null)
+    const { error } = await supabase.from('book_invites').upsert(
+      { book_id: book.id, email: e, invited_by: session.user.id, status: 'pending' },
+      { onConflict: 'book_id,email' }
+    )
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    setEmail('')
+    setMsg(`Invite sent to ${e}. They'll see it when they next open the app.`)
+    load()
+  }
+
+  async function cancelInvite(id) {
+    await supabase.from('book_invites').delete().eq('id', id)
+    load()
+  }
+
+  async function removeMember(userId) {
+    if (!window.confirm('Remove this co-owner from the book?')) return
+    await supabase.from('book_members').delete().eq('book_id', book.id).eq('user_id', userId)
+    load()
+  }
+
+  const shS = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }
+  const shI = { background: C.surface, borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }
+
+  return (
+    <div style={shS} onClick={onClose}>
+      <div style={shI} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '18px 18px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Share Book</div>
+            <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>{book.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '16px 18px', overflowY: 'auto' }}>
+          {loading ? <div style={{ color: C.textLow, fontSize: 13 }}>Loading…</div> : (
+            <>
+              {/* Current members */}
+              <div style={S.secHead()}>Members</div>
+              <div style={{ ...S.card, padding: '4px 14px' }}>
+                <div style={{ ...S.row, borderBottom: `1px solid ${C.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{session.user.email}</div>
+                    <div style={{ fontSize: 10, color: C.purple, marginTop: 2 }}>Owner</div>
+                  </div>
+                </div>
+                {members.map(m => (
+                  <div key={m.id} style={{ ...S.row, borderBottom: 'none' }}>
+                    <div>
+                      <div style={{ fontSize: 13 }}>{m.email}</div>
+                      <div style={{ fontSize: 10, color: C.textLow, marginTop: 2 }}>Co-owner</div>
+                    </div>
+                    {isOwner && (
+                      <button onClick={() => removeMember(m.user_id)}
+                        style={{ background: 'none', border: 'none', color: C.red, fontSize: 12, cursor: 'pointer', padding: '4px 8px' }}>
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {members.length === 0 && (
+                  <div style={{ fontSize: 12, color: C.textLow, padding: '10px 0' }}>No co-owners yet</div>
+                )}
+              </div>
+
+              {/* Pending invites */}
+              {invites.length > 0 && (
+                <>
+                  <div style={S.secHead(C.orange)}>Pending Invites</div>
+                  <div style={{ ...S.card, padding: '4px 14px' }}>
+                    {invites.map((inv, i) => (
+                      <div key={inv.id} style={{ ...S.row, borderBottom: i < invites.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                        <div style={{ fontSize: 13, color: C.textMid }}>{inv.email}</div>
+                        {isOwner && (
+                          <button onClick={() => cancelInvite(inv.id)}
+                            style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 12, cursor: 'pointer', padding: '4px 8px' }}>
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Invite form */}
+              {isOwner && (
+                <>
+                  <div style={S.secHead()}>Invite Co-Owner</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <input style={S.inp} type="email" placeholder="their@email.com"
+                      value={email} onChange={e => setEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && sendInvite()} />
+                  </div>
+                  {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{err}</div>}
+                  {msg && <div style={{ color: C.green, fontSize: 12, marginBottom: 10 }}>{msg}</div>}
+                  <button onClick={sendInvite} disabled={saving} style={{ ...S.btn(), width: '100%', opacity: saving ? 0.6 : 1 }}>
+                    {saving ? 'Sending…' : 'Send Invite'}
+                  </button>
+                  <div style={{ fontSize: 10, color: C.textLow, marginTop: 8, textAlign: 'center' }}>
+                    The person must already have a Lighthouse Trail account.
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── NOTIFICATION SHEET ───────────────────────────────────────────────────────
 const sheetStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }
 const sheetInner = { background: C.surface, borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }
@@ -1129,6 +1270,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showCheckin, setShowCheckin] = useState(false)
   const [showBookPicker, setShowBookPicker] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
+  const [showShareSheet, setShowShareSheet] = useState(false)
 
   const today = todayStr()
 
@@ -1219,6 +1361,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={() => setShowShareSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
+              👥
+            </button>
             <button onClick={() => setShowNotifSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
               🔔
             </button>
@@ -1314,6 +1459,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       {showNotifSheet && (
         <NotificationSheet session={session} bookId={book.id} onClose={() => setShowNotifSheet(false)} />
       )}
+      {showShareSheet && (
+        <ShareSheet book={book} session={session} onClose={() => setShowShareSheet(false)} />
+      )}
     </div>
   )
 }
@@ -1347,6 +1495,7 @@ export default function App() {
   const [book, setBook] = useState(null)
   const [allBooks, setAllBooks] = useState([])
   const [checkingBook, setCheckingBook] = useState(false)
+  const [pendingInvites, setPendingInvites] = useState([])
 
   useEffect(() => {
     if (missingConfig) return
@@ -1363,14 +1512,43 @@ export default function App() {
   useEffect(() => {
     if (missingConfig || !session) return
     setCheckingBook(true)
-    supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
-      .then(({ data }) => {
-        const books = data || []
-        setAllBooks(books)
-        if (books.length > 0) setBook(books[0])
-        setCheckingBook(false)
-      })
+    async function loadBooks() {
+      // Books owned by this user
+      const { data: owned } = await supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
+      // Books shared with this user
+      const { data: memberships } = await supabase.from('book_members').select('book_id').eq('user_id', session.user.id)
+      const sharedIds = (memberships || []).map(m => m.book_id)
+      let shared = []
+      if (sharedIds.length > 0) {
+        const { data } = await supabase.from('books').select('*').in('id', sharedIds)
+        shared = data || []
+      }
+      const books = [...(owned || []), ...shared]
+      setAllBooks(books)
+      if (books.length > 0) setBook(books[0])
+      // Check for pending invites to this user's email
+      const { data: invites } = await supabase.from('book_invites')
+        .select('*, books(name)').eq('email', session.user.email).eq('status', 'pending')
+      setPendingInvites(invites || [])
+      setCheckingBook(false)
+    }
+    loadBooks()
   }, [session])
+
+  async function acceptInvite(invite) {
+    await supabase.from('book_members').insert({
+      book_id: invite.book_id, user_id: session.user.id, role: 'member', email: session.user.email,
+    })
+    await supabase.from('book_invites').update({ status: 'accepted' }).eq('id', invite.id)
+    const { data: newBook } = await supabase.from('books').select('*').eq('id', invite.book_id).single()
+    if (newBook) { setAllBooks(prev => [...prev, newBook]); setBook(newBook) }
+    setPendingInvites(prev => prev.filter(i => i.id !== invite.id))
+  }
+
+  async function declineInvite(invite) {
+    await supabase.from('book_invites').update({ status: 'declined' }).eq('id', invite.id)
+    setPendingInvites(prev => prev.filter(i => i.id !== invite.id))
+  }
 
   async function signOut() {
     if (missingConfig) return
@@ -1391,6 +1569,31 @@ export default function App() {
   }
 
   if (!session) return <AuthScreen />
+
+  if (pendingInvites.length > 0) {
+    return (
+      <div style={{ ...S.root, paddingBottom: 0, padding: 20 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Lighthouse Trail</div>
+        <div style={{ fontSize: 12, color: C.textLow, marginBottom: 20 }}>You have book invitations</div>
+        {pendingInvites.map(inv => (
+          <div key={inv.id} style={{ ...S.card, borderLeft: `3px solid ${C.purple}` }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+              You've been invited to <span style={{ color: C.purple }}>{inv.books?.name || 'a book'}</span>
+            </div>
+            <div style={{ fontSize: 11, color: C.textLow, marginBottom: 12 }}>
+              Accept to become a co-owner and see all data in this book.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => acceptInvite(inv)} style={{ ...S.btn(C.purple), flex: 1 }}>Accept</button>
+              <button onClick={() => declineInvite(inv)} style={{ ...S.btn(C.surfaceHigh, true) }}>Decline</button>
+            </div>
+          </div>
+        ))}
+        <button onClick={signOut} style={{ ...S.btn(C.surfaceHigh, true), width: '100%', marginTop: 12 }}>Sign out</button>
+      </div>
+    )
+  }
+
   if (!book) return <BookSetup session={session} onComplete={b => { setAllBooks(prev => [...prev, b]); setBook(b) }} />
 
   return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={setBook} onSignOut={signOut} />
