@@ -1271,6 +1271,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showBookPicker, setShowBookPicker] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
   const [showShareSheet, setShowShareSheet] = useState(false)
+  const [newBookName, setNewBookName] = useState('')
+  const [creatingBook, setCreatingBook] = useState(false)
 
   const today = todayStr()
 
@@ -1332,6 +1334,19 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     await loadData()
   }
 
+  async function createBook() {
+    if (!newBookName.trim()) return
+    setCreatingBook(true)
+    const { data: bookId, error } = await supabase.rpc('create_personal_book', { p_name: newBookName.trim(), p_migrate: false })
+    if (!error) {
+      const { data: newBook } = await supabase.from('books').select('*').eq('id', bookId).single()
+      if (newBook) { onSwitchBook(newBook) }
+    }
+    setCreatingBook(false)
+    setShowBookPicker(false)
+    setNewBookName('')
+  }
+
   const tabs = [
     { id: 'overview', label: 'Home', icon: '⌂' },
     { id: 'cycles', label: 'Cycles', icon: '⊙' },
@@ -1353,11 +1368,11 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>Lighthouse Trail</div>
             <button
-              onClick={() => allBooks.length > 1 && setShowBookPicker(true)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: allBooks.length > 1 ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}
+              onClick={() => setShowBookPicker(true)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}
             >
               <span style={{ fontSize: 10, color: C.textLow }}>{book.name}</span>
-              {allBooks.length > 1 && <span style={{ fontSize: 9, color: C.purple }}>▾</span>}
+              <span style={{ fontSize: 9, color: C.purple }}>▾</span>
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1376,16 +1391,37 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
       {/* Book picker */}
       {showBookPicker && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200 }} onClick={() => setShowBookPicker(false)}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200 }} onClick={() => { setShowBookPicker(false); setNewBookName('') }}>
           <div style={{ position: 'absolute', top: 70, left: 16, right: 16, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '12px 14px 6px' }}>Switch book</div>
+            <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '12px 14px 6px' }}>My Books</div>
             {allBooks.map(b => (
-              <button key={b.id} onClick={() => { onSwitchBook(b); setShowBookPicker(false) }}
+              <button key={b.id} onClick={() => { onSwitchBook(b); setShowBookPicker(false); setNewBookName('') }}
                 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', borderTop: `1px solid ${C.border}`, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', textAlign: 'left' }}>
                 <span style={{ fontWeight: b.id === book.id ? 700 : 400 }}>{b.name}</span>
                 {b.id === book.id && <span style={{ fontSize: 12, color: C.purple }}>✓</span>}
               </button>
             ))}
+            {/* New book form */}
+            <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 14px 14px' }}>
+              {newBookName !== null && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    style={{ ...S.inp, flex: 1, fontSize: 13, padding: '8px 10px' }}
+                    placeholder="New book name…"
+                    value={newBookName}
+                    onChange={e => setNewBookName(e.target.value)}
+                    onKeyDown={async e => { if (e.key === 'Enter') await createBook() }}
+                  />
+                  <button
+                    disabled={creatingBook || !newBookName.trim()}
+                    onClick={async () => await createBook()}
+                    style={{ ...S.btn(), padding: '8px 14px', fontSize: 12, opacity: (!newBookName.trim() || creatingBook) ? 0.5 : 1 }}
+                  >
+                    {creatingBook ? '…' : 'Create'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1596,5 +1632,10 @@ export default function App() {
 
   if (!book) return <BookSetup session={session} onComplete={b => { setAllBooks(prev => [...prev, b]); setBook(b) }} />
 
-  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={setBook} onSignOut={signOut} />
+  function switchBook(b) {
+    if (!allBooks.find(x => x.id === b.id)) setAllBooks(prev => [...prev, b])
+    setBook(b)
+  }
+
+  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={switchBook} onSignOut={signOut} />
 }
