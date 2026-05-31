@@ -913,6 +913,13 @@ function NotificationSheet({ session, bookId, onClose }) {
     load()
   }, [bookId])
 
+  function swReady() {
+    return Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Service worker not ready. Try reloading the app.')), 5000)),
+    ])
+  }
+
   async function handleEnable() {
     setErr(null)
     const perm = await Notification.requestPermission()
@@ -922,7 +929,7 @@ function NotificationSheet({ session, bookId, onClose }) {
     if (!vapidKey) { setErr('VAPID key not configured (set VITE_VAPID_PUBLIC_KEY)'); return }
     setSaving(true)
     try {
-      const reg = await navigator.serviceWorker.ready
+      const reg = await swReady()
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidKey) })
       const { endpoint, keys: { p256dh, auth } } = sub.toJSON()
       const { error } = await supabase.from('push_subscriptions').upsert(
@@ -939,12 +946,14 @@ function NotificationSheet({ session, bookId, onClose }) {
 
   async function handleDisable() {
     setSaving(true)
-    const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.getSubscription()
-    if (sub) {
-      await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
-      await sub.unsubscribe()
-    }
+    try {
+      const reg = await swReady()
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+        await sub.unsubscribe()
+      }
+    } catch (_) {}
     setSubscribed(false)
     setSaving(false)
   }
