@@ -66,8 +66,22 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 
 ## Accounts Tab
 - `type` column on `cashflow_accounts` — migration in `supabase/migrations/20260531_add_account_type.sql`
+- `track_only` boolean column — migration in `supabase/migrations/20260531_add_account_track_only.sql`
 - **Credit accounts**: balance is stored as negative (debt). UI negates the entered value automatically when type=credit
+- **Tracking-only accounts**: excluded from totalCash, running balance in Agenda, and Calendar projections. Toggle per card ("● In balance" / "○ Tracking only"). OverviewTab shows "tracking only" label.
 - `initAdd` / `onInitAddDone` props trigger the add form open from parent (used by FAB)
+
+## Bottom Navigation
+- 4 main tabs in the bar: Home (⌂), Goals (◈), Accounts (◎), Manage (✦)
+- 5th item: ☰ **More** burger button → opens `BurgerMenu` bottom sheet
+- `BurgerMenu` component lists Cycles, Agenda, Calendar as large nav cards with descriptions
+- "ℹ How it works" toggle inside BurgerMenu shows descriptions of all 7 tabs
+- Burger button highlights when activeTab is cycles/agenda/calendar
+
+## Theme System
+- Dark (default): dark amethyst-tinted surfaces (`#0d0814`), lavender accent (`#c9a0e0`), Muted Teal positive (`#79aea3`), Terracotta negative (`#c97c73`), Sunlit Clay warning (`#f3c178`)
+- Light: warm cream surfaces (`#faf5ef`), Dark Amethyst accent (`#42033d`), Dark Teal positive (`#004346`), Terracotta darkened negative (`#9a4e47`), darkened Sunlit Clay warning
+- High-contrast and color-blind modes unchanged
 
 ## Floating Action Button (FAB)
 - `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)

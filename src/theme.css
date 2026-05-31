@@ -1,66 +1,66 @@
 /* ─── LIGHTHOUSE TRAIL — THEME SYSTEM ───────────────────────────────────────
-   Palette additions:
-     Dark Amethyst  #42033d   primary accent in light mode
-     Terracotta Clay #b2675e  negative/expense in light mode
-     Sunlit Clay    #f3c178   warning / color-blind accent
-     Dark Teal      #004346   positive/income in light mode
-     Muted Teal     #79aea3   info / color-blind positive
+   Palette:
+     Dark Amethyst   #42033d   — deep brand purple-red
+     Terracotta Clay #b2675e   — warm earthy red-orange
+     Sunlit Clay     #f3c178   — warm amber/gold
+     Dark Teal       #004346   — deep blue-green
+     Muted Teal      #79aea3   — soft blue-green
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* ─── BASE + DARK (DEFAULT) ─────────────────────────────────────────────── */
+/* ─── DARK (DEFAULT) ────────────────────────────────────────────────────────
+   Dark amethyst-tinted surfaces. Muted Teal = positive, Terracotta = negative,
+   Sunlit Clay = warning/accent highlights.                                    */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
 
   /* Surfaces */
-  --c-bg:         #0a0f1a;
-  --c-surface:    #111827;
-  --c-surface-hi: #1e293b;
-  --c-border:     #1e293b;
-  --c-input-bg:   #0f172a;
+  --c-bg:         #0d0814;   /* deep amethyst-black */
+  --c-surface:    #160e21;   /* slightly lifted */
+  --c-surface-hi: #201533;   /* cards, hover states */
+  --c-border:     #2e1f46;   /* subtle purple border */
+  --c-input-bg:   #0f0b1d;
 
   /* Text */
-  --c-text:       #f1f5f9;
-  --c-text-mid:   #94a3b8;
-  --c-text-low:   #475569;
+  --c-text:       #f0eaf5;   /* warm white */
+  --c-text-mid:   #9a82b2;   /* muted lavender */
+  --c-text-low:   #5a4870;   /* very muted */
 
-  /* Accent (primary interactive) */
-  --c-accent:     #a78bfa;
+  /* Accent — light lavender, readable on dark */
+  --c-accent:     #c9a0e0;
 
-  /* Semantic: positive / income */
-  --c-positive:   #4ade80;
-  --c-pos-bg:     #064e3b;
+  /* Positive / income — Muted Teal */
+  --c-positive:   #79aea3;
+  --c-pos-bg:     #0b1e1d;
 
-  /* Semantic: negative / expense */
-  --c-negative:   #f87171;
-  --c-neg-bg:     #450a0a;
+  /* Negative / expense — Terracotta lightened for dark bg */
+  --c-negative:   #c97c73;
+  --c-neg-bg:     #2d1210;
 
-  /* Warning */
-  --c-warning:    #f97316;
+  /* Warning — Sunlit Clay */
+  --c-warning:    #f3c178;
 
-  /* Info */
-  --c-info:       #38bdf8;
+  /* Info — lighter Muted Teal */
+  --c-info:       #a0c5c0;
 
   /* Button text (on coloured buttons) */
-  --c-btn-text:   #0a0f1a;
+  --c-btn-text:   #0d0814;
 
   /* Header gradient */
-  --c-header-grad: linear-gradient(135deg, #0f172a, #1e1b4b);
+  --c-header-grad: linear-gradient(135deg, #1d0a30, #330e58);
 
-  /* Alpha variants — replaces C.color + 'hex' concatenations */
-  --c-warn-bg:       rgba(249, 115,  22, 0.09);   /* orange·18 */
-  --c-warn-border:   rgba(249, 115,  22, 0.27);   /* orange·44 */
-  --c-warn-50:       rgba(249, 115,  22, 0.50);   /* orange·80 */
-  --c-info-67:       rgba( 56, 189, 248, 0.67);   /* blue·aa   */
-  --c-positive-67:   rgba( 74, 222, 128, 0.67);   /* green·aa  */
-  --c-negative-67:   rgba(248, 113, 113, 0.67);   /* red·aa    */
-  --c-positive-13:   rgba( 74, 222, 128, 0.13);   /* green·22  */
-  --c-negative-13:   rgba(248, 113, 113, 0.13);   /* red·22    */
+  /* Alpha variants */
+  --c-warn-bg:         rgba(243, 193, 120, 0.09);
+  --c-warn-border:     rgba(243, 193, 120, 0.28);
+  --c-warn-50:         rgba(243, 193, 120, 0.50);
+  --c-info-67:         rgba(160, 197, 192, 0.67);
+  --c-positive-67:     rgba(121, 174, 163, 0.67);
+  --c-negative-67:     rgba(201, 124, 115, 0.67);
+  --c-positive-13:     rgba(121, 174, 163, 0.13);
+  --c-negative-13:     rgba(201, 124, 115, 0.13);
+  --c-warn-near-empty: #2d1f00;
 
-  /* Near-empty safe-to-spend warning bg */
-  --c-warn-near-empty: #431407;
-
-  /* New palette — available as named vars for future use */
+  /* Raw palette */
   --palette-amethyst:   #42033d;
   --palette-terracotta: #b2675e;
   --palette-sunlit:     #f3c178;
@@ -68,47 +68,59 @@
   --palette-muted-teal: #79aea3;
 }
 
-/* ─── LIGHT ──────────────────────────────────────────────────────────────── */
+/* ─── LIGHT ──────────────────────────────────────────────────────────────────
+   Warm cream surfaces inspired by Sunlit Clay. Dark Amethyst = primary accent,
+   Dark Teal = income/positive, Terracotta = expense/negative.                 */
 [data-theme="light"] {
   color-scheme: light;
 
-  --c-bg:         #f7f3f0;
+  /* Surfaces */
+  --c-bg:         #faf5ef;   /* warm cream */
   --c-surface:    #ffffff;
-  --c-surface-hi: #ede8e5;
-  --c-border:     #d9cfc9;
-  --c-input-bg:   #f0ebe8;
+  --c-surface-hi: #f0e8e0;   /* warm off-white */
+  --c-border:     #d8c8bc;
+  --c-input-bg:   #f5eee6;
 
-  --c-text:       #1a1018;
-  --c-text-mid:   #5c4a57;
-  --c-text-low:   #9e8a96;
+  /* Text */
+  --c-text:       #1a0a18;   /* near-black, amethyst tinted */
+  --c-text-mid:   #5c3d5a;   /* muted amethyst */
+  --c-text-low:   #9a7a95;
 
-  --c-accent:     #42033d;        /* Dark Amethyst */
+  /* Accent — Dark Amethyst (primary brand, high contrast on cream) */
+  --c-accent:     #42033d;
 
-  --c-positive:   #004346;        /* Dark Teal */
-  --c-pos-bg:     #daeeed;
+  /* Positive / income — Dark Teal (high contrast on light) */
+  --c-positive:   #004346;
+  --c-pos-bg:     #d2ecea;
 
-  --c-negative:   #b2675e;        /* Terracotta Clay */
-  --c-neg-bg:     #faeae8;
+  /* Negative / expense — Terracotta darkened for AA contrast on cream */
+  --c-negative:   #9a4e47;
+  --c-neg-bg:     #fce8e6;
 
-  --c-warning:    #b87a3a;        /* Sunlit Clay darkened for contrast */
+  /* Warning — Sunlit Clay darkened for readability */
+  --c-warning:    #7a4d10;
 
-  --c-info:       #79aea3;        /* Muted Teal */
+  /* Info — Dark Teal variant */
+  --c-info:       #1a5c60;
 
+  /* Button text */
   --c-btn-text:   #ffffff;
 
-  --c-header-grad: linear-gradient(135deg, #42033d, #6b1565);
+  /* Header gradient — amethyst */
+  --c-header-grad: linear-gradient(135deg, #42033d, #6d1562);
 
-  --c-warn-bg:       rgba(184, 122,  58, 0.09);
-  --c-warn-border:   rgba(184, 122,  58, 0.27);
-  --c-warn-50:       rgba(184, 122,  58, 0.50);
-  --c-info-67:       rgba(121, 174, 163, 0.67);
-  --c-positive-67:   rgba(  0,  67,  70, 0.67);
-  --c-negative-67:   rgba(178, 103,  94, 0.67);
-  --c-positive-13:   rgba(  0,  67,  70, 0.13);
-  --c-negative-13:   rgba(178, 103,  94, 0.13);
+  /* Alpha variants */
+  --c-warn-bg:         rgba(122, 77,  16, 0.08);
+  --c-warn-border:     rgba(122, 77,  16, 0.25);
+  --c-warn-50:         rgba(122, 77,  16, 0.50);
+  --c-info-67:         rgba( 26, 92,  96, 0.67);
+  --c-positive-67:     rgba(  0, 67,  70, 0.67);
+  --c-negative-67:     rgba(154, 78,  71, 0.67);
+  --c-positive-13:     rgba(  0, 67,  70, 0.13);
+  --c-negative-13:     rgba(154, 78,  71, 0.13);
+  --c-warn-near-empty: #3d1500;
 
-  --c-warn-near-empty: #3d1a00;
-
+  /* Raw palette */
   --palette-amethyst:   #42033d;
   --palette-terracotta: #b2675e;
   --palette-sunlit:     #f3c178;
@@ -146,15 +158,14 @@
 
   --c-header-grad: linear-gradient(135deg, #000000, #1a0033);
 
-  --c-warn-bg:       rgba(255, 204,   0, 0.09);
-  --c-warn-border:   rgba(255, 204,   0, 0.30);
-  --c-warn-50:       rgba(255, 204,   0, 0.50);
-  --c-info-67:       rgba(102, 204, 255, 0.67);
-  --c-positive-67:   rgba(  0, 255, 136, 0.67);
-  --c-negative-67:   rgba(255, 107, 107, 0.67);
-  --c-positive-13:   rgba(  0, 255, 136, 0.13);
-  --c-negative-13:   rgba(255, 107, 107, 0.13);
-
+  --c-warn-bg:         rgba(255, 204,   0, 0.09);
+  --c-warn-border:     rgba(255, 204,   0, 0.30);
+  --c-warn-50:         rgba(255, 204,   0, 0.50);
+  --c-info-67:         rgba(102, 204, 255, 0.67);
+  --c-positive-67:     rgba(  0, 255, 136, 0.67);
+  --c-negative-67:     rgba(255, 107, 107, 0.67);
+  --c-positive-13:     rgba(  0, 255, 136, 0.13);
+  --c-negative-13:     rgba(255, 107, 107, 0.13);
   --c-warn-near-empty: #331a00;
 
   --palette-amethyst:   #42033d;
@@ -164,46 +175,44 @@
   --palette-muted-teal: #79aea3;
 }
 
-/* ─── COLOR-BLIND (deuteranopia-safe) ────────────────────────────────────── */
-/* Avoids red/green distinction. Uses blue/orange + Muted Teal / Sunlit Clay. */
+/* ─── COLOR-BLIND (deuteranopia-safe) ───────────────────────────────────── */
 [data-theme="color-blind"] {
   color-scheme: dark;
 
-  --c-bg:         #0a0f1a;
-  --c-surface:    #111827;
-  --c-surface-hi: #1e293b;
-  --c-border:     #1e293b;
-  --c-input-bg:   #0f172a;
+  --c-bg:         #0d0814;
+  --c-surface:    #160e21;
+  --c-surface-hi: #201533;
+  --c-border:     #2e1f46;
+  --c-input-bg:   #0f0b1d;
 
-  --c-text:       #f1f5f9;
-  --c-text-mid:   #94a3b8;
-  --c-text-low:   #475569;
+  --c-text:       #f0eaf5;
+  --c-text-mid:   #9a82b2;
+  --c-text-low:   #5a4870;
 
-  --c-accent:     #f3c178;        /* Sunlit Clay — warm, distinct yellow */
+  --c-accent:     #f3c178;   /* Sunlit Clay — warm, unambiguous */
 
-  --c-positive:   #79aea3;        /* Muted Teal — blue-green, not pure green */
-  --c-pos-bg:     #0d2b2a;
+  --c-positive:   #79aea3;   /* Muted Teal — blue-green, distinct */
+  --c-pos-bg:     #0b1e1d;
 
-  --c-negative:   #f97316;        /* Orange — distinct from teal */
-  --c-neg-bg:     #341500;
+  --c-negative:   #f97316;   /* Orange — clearly distinct from teal */
+  --c-neg-bg:     #2d1500;
 
-  --c-warning:    #f3c178;        /* Sunlit Clay */
+  --c-warning:    #f3c178;
 
   --c-info:       #38bdf8;
 
-  --c-btn-text:   #0a0f1a;
+  --c-btn-text:   #0d0814;
 
-  --c-header-grad: linear-gradient(135deg, #0f172a, #2d2010);
+  --c-header-grad: linear-gradient(135deg, #1d0a30, #2d2010);
 
-  --c-warn-bg:       rgba(243, 193, 120, 0.09);
-  --c-warn-border:   rgba(243, 193, 120, 0.27);
-  --c-warn-50:       rgba(249, 115,  22, 0.50);
-  --c-info-67:       rgba( 56, 189, 248, 0.67);
-  --c-positive-67:   rgba(121, 174, 163, 0.67);
-  --c-negative-67:   rgba(249, 115,  22, 0.67);
-  --c-positive-13:   rgba(121, 174, 163, 0.13);
-  --c-negative-13:   rgba(249, 115,  22, 0.13);
-
+  --c-warn-bg:         rgba(243, 193, 120, 0.09);
+  --c-warn-border:     rgba(243, 193, 120, 0.27);
+  --c-warn-50:         rgba(249, 115,  22, 0.50);
+  --c-info-67:         rgba( 56, 189, 248, 0.67);
+  --c-positive-67:     rgba(121, 174, 163, 0.67);
+  --c-negative-67:     rgba(249, 115,  22, 0.67);
+  --c-positive-13:     rgba(121, 174, 163, 0.13);
+  --c-negative-13:     rgba(249, 115,  22, 0.13);
   --c-warn-near-empty: #2d1500;
 
   --palette-amethyst:   #42033d;
@@ -223,12 +232,10 @@ html, body {
   margin: 0;
 }
 
-/* Native form elements inherit theme */
 input, select, textarea, button {
   font-family: inherit;
 }
 
-/* Smooth theme transitions */
 *, *::before, *::after {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }

@@ -326,7 +326,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   }, [bookId, today])
 
   const totalCash = accounts
-    .filter(a => a.type !== 'credit')
+    .filter(a => a.type !== 'credit' && !a.track_only)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   const end14 = new Date(); end14.setDate(end14.getDate() + 14)
@@ -411,7 +411,9 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
           <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < accounts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
-              {a.type && <div style={{ fontSize: 10, color: C.textLow }}>{a.type}</div>}
+              <div style={{ fontSize: 10, color: a.track_only ? C.orange : C.textLow }}>
+                {a.type}{a.track_only ? ' · tracking only' : ''}
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance) || '--'}</div>
@@ -529,7 +531,7 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
 
   // Compute running balance starting from today's total cash
   const todayBalance = accounts
-    .filter(a => a.type !== 'credit')
+    .filter(a => a.type !== 'credit' && !a.track_only)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   const instancesWithBalance = useMemo(() => {
@@ -755,7 +757,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
   const monthEnd = lastDay.toISOString().slice(0, 10)
 
   const totalCash = accounts
-    .filter(a => a.type !== 'credit')
+    .filter(a => a.type !== 'credit' && !a.track_only)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   // Build daily net change map
@@ -881,6 +883,11 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
     onRefresh()
   }
 
+  async function toggleTrackOnly(account) {
+    await supabase.from('cashflow_accounts').update({ track_only: !account.track_only }).eq('id', account.id)
+    onRefresh()
+  }
+
   async function addAccount() {
     if (!newName.trim()) { setAddErr('Enter an account name'); return }
     setSaving(true); setAddErr(null)
@@ -934,11 +941,18 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
                 Reconcile
               </button>
             </div>
-            {a.baseline_date && (
-              <div style={{ fontSize: 10, color: C.textLow, marginTop: 6 }}>
-                Last confirmed: {fmtMonthDay(a.baseline_date)}
-              </div>
-            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+              {a.baseline_date
+                ? <div style={{ fontSize: 10, color: C.textLow }}>Last confirmed: {fmtMonthDay(a.baseline_date)}</div>
+                : <div />
+              }
+              <button
+                onClick={() => toggleTrackOnly(a)}
+                style={{ background: 'none', border: `1px solid ${a.track_only ? C.orange : C.border}`, borderRadius: 10, padding: '3px 10px', color: a.track_only ? C.orange : C.textLow, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+              >
+                {a.track_only ? '○ Tracking only' : '● In balance'}
+              </button>
+            </div>
           </div>
         )
       })}
@@ -1447,6 +1461,73 @@ function ThemePicker({ current, onClose }) {
   )
 }
 
+// ─── BURGER MENU ──────────────────────────────────────────────────────────────
+const BURGER_NAV = [
+  { id: 'cycles',   label: 'Cycles',   icon: '⊙', desc: 'Plan spending per pay period using budget envelopes' },
+  { id: 'agenda',   label: 'Agenda',   icon: '≡', desc: 'Timeline of all transactions — approve, skip, or edit amounts' },
+  { id: 'calendar', label: 'Calendar', icon: '▦', desc: 'Monthly cash flow with projected day-by-day balance' },
+]
+
+const ALL_TAB_INFO = [
+  { label: 'Home',     icon: '⌂', desc: 'Your financial snapshot. Safe to spend = cash balance minus upcoming bills until your next income. Includes a 14-day calendar grid, tight envelopes at ≥90% usage, and quick account access.' },
+  { label: 'Goals',    icon: '◈', desc: 'Create savings goals with a target amount and optional deadline. Log contributions and watch progress bars fill up.' },
+  { label: 'Accounts', icon: '◎', desc: 'Add and rename bank accounts. Tap Reconcile to sync your tracked balance with your actual bank. Mark accounts as tracking-only to exclude them from your spending totals.' },
+  { label: 'Manage',   icon: '✦', desc: 'Add, search, and delete transactions. Set up recurring transactions (weekly, biweekly, monthly) with optional end dates.' },
+  { label: 'Cycles',   icon: '⊙', desc: 'Budget by pay period. Each cycle has envelopes (categories) with set allocations. Track spending per envelope and reassign funds between them.' },
+  { label: 'Agenda',   icon: '≡', desc: 'Scrollable timeline — past 14 days and next 60 days. Tap ✓ to confirm actuals, ⊘ to skip, or ✎ to edit an amount just this time or for all future occurrences.' },
+  { label: 'Calendar', icon: '▦', desc: 'Month-by-month view showing net cash flow per day and a projected running balance from today forward.' },
+]
+
+function BurgerMenu({ activeTab, onNavigate, onClose }) {
+  const [showInfo, setShowInfo] = useState(false)
+  return (
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={{ ...sheetInner, maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+        <div style={{ ...sheetHeader }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{showInfo ? 'How it works' : 'More'}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              onClick={() => setShowInfo(v => !v)}
+              style={{ background: showInfo ? C.surfaceHigh : 'none', border: `1px solid ${C.border}`, borderRadius: 8, padding: '5px 12px', color: showInfo ? C.purple : C.textMid, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {showInfo ? '← Back' : 'ℹ How it works'}
+            </button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+          </div>
+        </div>
+        <div style={{ padding: '14px 16px 32px', overflowY: 'auto' }}>
+          {showInfo ? (
+            ALL_TAB_INFO.map(item => (
+              <div key={item.label} style={{ display: 'flex', gap: 14, padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 22, flexShrink: 0, width: 28, textAlign: 'center', paddingTop: 1 }}>{item.icon}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: C.text }}>{item.label}</div>
+                  <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.55 }}>{item.desc}</div>
+                </div>
+              </div>
+            ))
+          ) : (
+            BURGER_NAV.map(item => (
+              <button
+                key={item.id}
+                onClick={() => { onNavigate(item.id); onClose() }}
+                style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: activeTab === item.id ? C.surfaceHigh : C.surface, border: `1px solid ${activeTab === item.id ? C.purple : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
+              >
+                <span style={{ fontSize: 24, flexShrink: 0, width: 28, textAlign: 'center' }}>{item.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: activeTab === item.id ? C.purple : C.text }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: C.textMid, marginTop: 3 }}>{item.desc}</div>
+                </div>
+                <span style={{ color: C.textLow, fontSize: 18 }}>›</span>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── FLOATING ACTION BUTTON ───────────────────────────────────────────────────
 function FAB({ onTransaction, onAccount, onGoal, onCycle }) {
   const [open, setOpen] = useState(false)
@@ -1498,6 +1579,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showShareSheet, setShowShareSheet] = useState(false)
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
+  const [showBurger, setShowBurger] = useState(false)
   const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('lt_theme') || 'dark')
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
@@ -1576,15 +1658,13 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     setNewBookName('')
   }
 
-  const tabs = [
-    { id: 'overview', label: 'Home', icon: '⌂' },
-    { id: 'cycles', label: 'Cycles', icon: '⊙' },
-    { id: 'goals', label: 'Goals', icon: '◈' },
-    { id: 'agenda', label: 'Agenda', icon: '≡' },
-    { id: 'calendar', label: 'Cal', icon: '▦' },
-    { id: 'accounts', label: 'Accounts', icon: '◎' },
-    { id: 'transactions', label: 'Manage', icon: '✦' },
+  const MAIN_TABS = [
+    { id: 'overview',     label: 'Home',     icon: '⌂' },
+    { id: 'goals',        label: 'Goals',    icon: '◈' },
+    { id: 'accounts',     label: 'Accounts', icon: '◎' },
+    { id: 'transactions', label: 'Manage',   icon: '✦' },
   ]
+  const isBurgerActive = ['cycles', 'agenda', 'calendar'].includes(activeTab)
 
   return (
     <div style={S.root}>
@@ -1709,13 +1789,18 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
       {/* Bottom tab bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: 'none', border: 'none', padding: '8px 0 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 15, lineHeight: 1, color: activeTab === t.id ? C.purple : C.textMid }}>{t.icon}</span>
-            <span style={{ fontSize: 8, color: activeTab === t.id ? C.purple : C.textLow, fontWeight: activeTab === t.id ? 700 : 400, letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{t.label}</span>
-            {activeTab === t.id && <div style={{ width: 14, height: 2, background: C.purple, borderRadius: 1 }} />}
+        {MAIN_TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+            <span style={{ fontSize: 17, lineHeight: 1, color: activeTab === t.id ? C.purple : C.textMid }}>{t.icon}</span>
+            <span style={{ fontSize: 9, color: activeTab === t.id ? C.purple : C.textLow, fontWeight: activeTab === t.id ? 700 : 400, letterSpacing: 0.3 }}>{t.label}</span>
+            {activeTab === t.id && <div style={{ width: 16, height: 2, background: C.purple, borderRadius: 1 }} />}
           </button>
         ))}
+        <button onClick={() => setShowBurger(true)} style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+          <span style={{ fontSize: 17, lineHeight: 1, color: isBurgerActive ? C.purple : C.textMid }}>☰</span>
+          <span style={{ fontSize: 9, color: isBurgerActive ? C.purple : C.textLow, fontWeight: isBurgerActive ? 700 : 400, letterSpacing: 0.3 }}>More</span>
+          {isBurgerActive && <div style={{ width: 16, height: 2, background: C.purple, borderRadius: 1 }} />}
+        </button>
       </div>
 
       {/* FAB */}
@@ -1787,6 +1872,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       )}
       {showShareSheet && (
         <ShareSheet book={book} session={session} onClose={() => setShowShareSheet(false)} />
+      )}
+      {showBurger && (
+        <BurgerMenu activeTab={activeTab} onNavigate={setActiveTab} onClose={() => setShowBurger(false)} />
       )}
     </div>
   )
