@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Lighthouse Trail" />
@@ -15,22 +16,13 @@
       body { margin: 0; background: #0a0f1a; color: #f1f5f9; font-family: monospace; }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
-    <script>
-      window.onerror = function(msg, src, line, col, err) {
-        document.getElementById('root').innerHTML =
-          '<div style="padding:24px;color:#f87171">' +
-          '<b>JS Error</b><br><br>' + msg +
-          '<br><small style="color:#94a3b8">' + src + ':' + line + '</small></div>';
-      };
-    </script>
   </head>
   <body>
-    <div id="root"><div style="padding:24px;color:#475569;font-size:13px">Starting up…</div></div>
+    <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Unregister any stale service workers
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()))
+        navigator.serviceWorker.register('/sw.js')
       }
     </script>
   </body>
