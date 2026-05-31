@@ -59,3 +59,23 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Multi-account picker**: `CheckInBanner` "Reconcile balance" now shows an account picker bottom sheet when there are 2+ accounts; single account still opens directly
   - State: `showAccountPicker` in `MainApp`
 
+## Agenda Tab
+- `AgendaTab` in `src/App.jsx`
+- Each transaction instance has a ✎ pencil button to edit the amount inline
+- Edit UI shows: amount input + **"This time"** (creates/updates override with `action='modified'`) + **"All future"** (updates `cashflow_transactions.amount` directly); recurring transactions show both options, one-offs only show "This time"
+
+## Accounts Tab
+- `type` column on `cashflow_accounts` — migration in `supabase/migrations/20260531_add_account_type.sql`
+- **Credit accounts**: balance is stored as negative (debt). UI negates the entered value automatically when type=credit
+- `initAdd` / `onInitAddDone` props trigger the add form open from parent (used by FAB)
+
+## Floating Action Button (FAB)
+- `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)
+- Tapping `+` opens 4 action buttons: Transaction (opens AddTxModal), Account (switches to Accounts tab + triggers add form), Goal (switches to Goals tab), Cycle (switches to Cycles tab)
+- Backdrop div closes menu on outside tap
+
+## Mobile Layout
+- `S.root` paddingBottom: `calc(80px + env(safe-area-inset-bottom))` — accounts for tab bar + home indicator
+- Body content wrapper: `padding: 14px 16px 0`
+- Tab bar: compact padding (`8px 0 6px`), 8px labels, `env(safe-area-inset-bottom)` on bar itself
+

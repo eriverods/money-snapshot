@@ -22,7 +22,7 @@ const C = {
   blue:       'var(--c-info)',
 }
 const S = {
-  root: { fontFamily: "'Lato', sans-serif", background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 72 },
+  root: { fontFamily: "'Lato', sans-serif", background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' },
   card: { background: C.surface, borderRadius: 14, padding: 14, marginBottom: 12, border: `1px solid ${C.border}` },
   inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
   sel: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
@@ -510,6 +510,8 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
 
   const [filterAccount, setFilterAccount] = useState('')
   const [filterType, setFilterType] = useState('')
+  const [editKey, setEditKey] = useState(null)
+  const [editAmt, setEditAmt] = useState('')
 
   const allInstances = useMemo(() => {
     const items = []
@@ -594,6 +596,25 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
     onOverrideChange()
   }
 
+  async function updateOnce(tx, date, amt) {
+    const parsed = parseFloat(amt)
+    if (isNaN(parsed) || parsed <= 0) return
+    const ov = getOverride(overrides, tx.id, date)
+    const rec = { transaction_id: tx.id, instance_date: date, action: 'modified', modified_amount: parsed }
+    if (ov) await supabase.from('cashflow_overrides').update(rec).eq('id', ov.id)
+    else await supabase.from('cashflow_overrides').insert(rec)
+    setEditKey(null)
+    onOverrideChange()
+  }
+
+  async function updateAllFuture(tx, amt) {
+    const parsed = parseFloat(amt)
+    if (isNaN(parsed) || parsed <= 0) return
+    await supabase.from('cashflow_transactions').update({ amount: parsed }).eq('id', tx.id)
+    setEditKey(null)
+    onOverrideChange()
+  }
+
   return (
     <div>
       {/* Filters */}
@@ -633,45 +654,84 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
 
             {/* Instances */}
             {insts.map((inst, i) => {
+              const key = `${inst.tx.id}:${inst.date}`
               const isIncome = inst.tx.type === 'income'
               const isApproved = inst.state === 'approved'
               const isSkipped = inst.state === 'skipped'
               const isModified = inst.state === 'modified'
               const amt = isModified ? (inst.override?.modified_amount ?? inst.tx.amount) : inst.tx.amount
+              const isEditing = editKey === key
               return (
-                <div key={`${inst.tx.id}:${inst.date}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: i < insts.length - 1 ? `1px solid ${C.border}` : 'none', opacity: isSkipped ? 0.4 : 1 }}>
-                  {/* Approve toggle */}
-                  <button
-                    onClick={() => quickApprove(inst.tx, inst.date, inst.state)}
-                    style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved || isModified ? C.green : isPast ? 'var(--c-warn-50)' : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
-                  >
-                    {(isApproved || isModified) && <span style={{ color: 'var(--c-btn-text)', fontWeight: 900 }}>✓</span>}
-                  </button>
+                <div key={key}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: i < insts.length - 1 && !isEditing ? `1px solid ${C.border}` : 'none', opacity: isSkipped ? 0.4 : 1 }}>
+                    {/* Approve toggle */}
+                    <button
+                      onClick={() => quickApprove(inst.tx, inst.date, inst.state)}
+                      style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved || isModified ? C.green : isPast ? 'var(--c-warn-50)' : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
+                    >
+                      {(isApproved || isModified) && <span style={{ color: 'var(--c-btn-text)', fontWeight: 900 }}>✓</span>}
+                    </button>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: isApproved ? 700 : 500, fontStyle: inst.state === 'projected' ? 'italic' : 'normal', color: isSkipped ? C.textLow : C.text, textDecoration: isSkipped ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {inst.tx.label}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: isApproved ? 700 : 500, fontStyle: inst.state === 'projected' ? 'italic' : 'normal', color: isSkipped ? C.textLow : C.text, textDecoration: isSkipped ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {inst.tx.label}
+                      </div>
+                      <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>
+                        {inst.tx.account}
+                        {inst.tx.recurrence !== 'once' && <span style={{ color: 'var(--c-info-67)' }}> · ↻ {inst.tx.recurrence}</span>}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>
-                      {inst.tx.account}
-                      {inst.tx.recurrence !== 'once' && <span style={{ color: 'var(--c-info-67)' }}> · ↻ {inst.tx.recurrence}</span>}
+
+                    <button
+                      onClick={() => { setEditKey(key); setEditAmt(String(amt)) }}
+                      style={{ background: 'none', border: 'none', color: isEditing ? C.purple : C.textLow, cursor: 'pointer', fontSize: 12, padding: '0 2px', flexShrink: 0 }}
+                      title="Edit amount"
+                    >✎</button>
+
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red }}>
+                        {isIncome ? '+' : '-'}{fmt(amt)}
+                      </div>
                     </div>
+
+                    {/* Skip */}
+                    <button
+                      onClick={() => quickSkip(inst.tx, inst.date, inst.state)}
+                      style={{ background: 'none', border: 'none', color: isSkipped ? C.orange : C.textLow, cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}
+                      title={isSkipped ? 'Unskip' : 'Skip'}
+                    >
+                      {isSkipped ? '↩' : '⊘'}
+                    </button>
                   </div>
 
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red }}>
-                      {isIncome ? '+' : '-'}{fmt(amt)}
+                  {/* Inline amount editor */}
+                  {isEditing && (
+                    <div style={{ background: C.surfaceHigh, borderRadius: 8, padding: '10px 12px', marginBottom: 6, borderBottom: i < insts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                      <div style={{ fontSize: 10, color: C.textLow, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Edit amount · {inst.tx.label}</div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          style={{ ...S.inp, flex: '1 1 80px', padding: '7px 10px', fontSize: 14, minWidth: 80 }}
+                          type="number"
+                          step="0.01"
+                          value={editAmt}
+                          onChange={e => setEditAmt(e.target.value)}
+                          autoFocus
+                        />
+                        <button style={{ ...S.btn(), fontSize: 11, padding: '7px 10px', whiteSpace: 'nowrap' }}
+                          onClick={() => updateOnce(inst.tx, inst.date, editAmt)}>
+                          This time
+                        </button>
+                        {inst.tx.recurrence !== 'once' && (
+                          <button style={{ ...S.btn(C.orange), fontSize: 11, padding: '7px 10px', whiteSpace: 'nowrap' }}
+                            onClick={() => updateAllFuture(inst.tx, editAmt)}>
+                            All future
+                          </button>
+                        )}
+                        <button style={{ background: 'none', border: 'none', color: C.textLow, cursor: 'pointer', padding: '0 4px', fontSize: 18, flexShrink: 0 }}
+                          onClick={() => setEditKey(null)}>×</button>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Skip */}
-                  <button
-                    onClick={() => quickSkip(inst.tx, inst.date, inst.state)}
-                    style={{ background: 'none', border: 'none', color: isSkipped ? C.orange : C.textLow, cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}
-                    title={isSkipped ? 'Unskip' : 'Skip'}
-                  >
-                    {isSkipped ? '↩' : '⊘'}
-                  </button>
+                  )}
                 </div>
               )
             })}
@@ -799,7 +859,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
 }
 
 // ─── ACCOUNTS TAB ─────────────────────────────────────────────────────────────
-function AccountsTab({ accounts, bookId, onReconcile, onRefresh }) {
+function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInitAddDone }) {
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -808,6 +868,10 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh }) {
   const [newType, setNewType] = useState('checking')
   const [newBalance, setNewBalance] = useState('')
   const [addErr, setAddErr] = useState(null)
+
+  useEffect(() => {
+    if (initAdd) { setShowAdd(true); onInitAddDone?.() }
+  }, [initAdd])
 
   async function saveEdit(id) {
     setSaving(true)
@@ -820,9 +884,12 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh }) {
   async function addAccount() {
     if (!newName.trim()) { setAddErr('Enter an account name'); return }
     setSaving(true); setAddErr(null)
+    const signedBalance = newType === 'credit'
+      ? -(Math.abs(parseFloat(newBalance) || 0))
+      : (parseFloat(newBalance) || 0)
     const { error } = await supabase.from('cashflow_accounts').insert({
       book_id: bookId, name: newName.trim(), type: newType,
-      balance: parseFloat(newBalance) || 0,
+      balance: signedBalance,
       baseline_date: todayStr(),
     })
     setSaving(false)
@@ -894,7 +961,10 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh }) {
             </div>
             <div>
               <div style={S.lbl}>Current Balance</div>
-              <input style={S.inp} type="number" inputMode="decimal" placeholder="0.00" value={newBalance} onChange={e => setNewBalance(e.target.value)} />
+              <input style={S.inp} type="number" inputMode="decimal" placeholder={newType === 'credit' ? 'Amount owed' : '0.00'} value={newBalance} onChange={e => setNewBalance(e.target.value)} />
+              {newType === 'credit' && (
+                <div style={{ fontSize: 10, color: C.orange, marginTop: 3 }}>Stored as negative (debt)</div>
+              )}
             </div>
           </div>
           {addErr && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{addErr}</div>}
@@ -1377,6 +1447,42 @@ function ThemePicker({ current, onClose }) {
   )
 }
 
+// ─── FLOATING ACTION BUTTON ───────────────────────────────────────────────────
+function FAB({ onTransaction, onAccount, onGoal, onCycle }) {
+  const [open, setOpen] = useState(false)
+  const actions = [
+    { label: 'Transaction', color: C.purple, fn: onTransaction },
+    { label: 'Account',     color: C.green,  fn: onAccount },
+    { label: 'Goal',        color: C.blue,   fn: onGoal },
+    { label: 'Cycle',       color: C.orange, fn: onCycle },
+  ]
+  return (
+    <>
+      {open && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 149 }} onClick={() => setOpen(false)} />
+      )}
+      <div style={{ position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))', right: 16, zIndex: 150, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'none' }}>
+        {open && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, pointerEvents: 'auto' }}>
+            {actions.map(({ label, color, fn }) => (
+              <button key={label} onClick={() => { fn(); setOpen(false) }}
+                style={{ background: color, border: 'none', borderRadius: 20, padding: '9px 18px', color: 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+                + {label}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          onClick={() => setOpen(v => !v)}
+          style={{ width: 52, height: 52, borderRadius: '50%', background: C.purple, border: 'none', color: 'var(--c-btn-text)', fontSize: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', fontFamily: 'inherit', transform: open ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s', pointerEvents: 'auto' }}
+        >
+          +
+        </button>
+      </div>
+    </>
+  )
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
@@ -1395,6 +1501,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('lt_theme') || 'dark')
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
+  const [accountInitAdd, setAccountInitAdd] = useState(false)
 
   const today = todayStr()
 
@@ -1556,7 +1663,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       )}
 
       {/* Body */}
-      <div style={{ padding: '14px 14px 0' }}>
+      <div style={{ padding: '14px 16px 0' }}>
         {showCheckin && (
           <CheckInBanner
             onReconcile={() => {
@@ -1590,7 +1697,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               <CalendarTab accounts={accounts} transactions={transactions} overrides={overrides} />
             )}
             {activeTab === 'accounts' && (
-              <AccountsTab accounts={accounts} bookId={book.id} onReconcile={setReconcileAccount} onRefresh={loadData} />
+              <AccountsTab accounts={accounts} bookId={book.id} onReconcile={setReconcileAccount} onRefresh={loadData}
+                initAdd={accountInitAdd} onInitAddDone={() => setAccountInitAdd(false)} />
             )}
             {activeTab === 'transactions' && (
               <TransactionsTab transactions={transactions} bookId={book.id} onRefresh={loadData} />
@@ -1602,13 +1710,21 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       {/* Bottom tab bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: 'none', border: 'none', padding: '10px 0 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <span style={{ fontSize: 16, lineHeight: 1 }}>{t.icon}</span>
-            <span style={{ fontSize: 9, color: activeTab === t.id ? C.purple : C.textLow, fontWeight: activeTab === t.id ? 700 : 400, letterSpacing: 0.5 }}>{t.label}</span>
-            {activeTab === t.id && <div style={{ width: 16, height: 2, background: C.purple, borderRadius: 1 }} />}
+          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: 'none', border: 'none', padding: '8px 0 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 15, lineHeight: 1, color: activeTab === t.id ? C.purple : C.textMid }}>{t.icon}</span>
+            <span style={{ fontSize: 8, color: activeTab === t.id ? C.purple : C.textLow, fontWeight: activeTab === t.id ? 700 : 400, letterSpacing: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{t.label}</span>
+            {activeTab === t.id && <div style={{ width: 14, height: 2, background: C.purple, borderRadius: 1 }} />}
           </button>
         ))}
       </div>
+
+      {/* FAB */}
+      <FAB
+        onTransaction={() => setShowAddTx(true)}
+        onAccount={() => { setActiveTab('accounts'); setAccountInitAdd(true) }}
+        onGoal={() => setActiveTab('goals')}
+        onCycle={() => setActiveTab('cycles')}
+      />
 
       {/* Theme picker */}
       {showThemePicker && (
