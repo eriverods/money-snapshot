@@ -1,14 +1,25 @@
 import { useState, useMemo } from 'react'
 
 const C = {
-  bg: '#0a0f1a', surface: '#111827', surfaceHigh: '#1e293b',
-  border: '#1e293b', text: '#f1f5f9', textMid: '#94a3b8', textLow: '#475569',
-  green: '#4ade80', red: '#f87171', orange: '#f97316', purple: '#a78bfa', blue: '#38bdf8',
+  bg:         'var(--c-bg)',
+  surface:    'var(--c-surface)',
+  surfaceHigh:'var(--c-surface-hi)',
+  border:     'var(--c-border)',
+  text:       'var(--c-text)',
+  textMid:    'var(--c-text-mid)',
+  textLow:    'var(--c-text-low)',
+  green:      'var(--c-positive)',
+  greenBg:    'var(--c-pos-bg)',
+  red:        'var(--c-negative)',
+  redBg:      'var(--c-neg-bg)',
+  orange:     'var(--c-warning)',
+  purple:     'var(--c-accent)',
+  blue:       'var(--c-info)',
 }
 const S = {
-  inp: { background: '#0f172a', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' },
+  inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' },
   lbl: { fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 3 },
-  btn: (bg) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 16px', color: bg === C.surfaceHigh ? C.textMid : '#0a0f1a', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }),
+  btn: (bg) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 16px', color: bg === C.surfaceHigh ? C.textMid : 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }),
 }
 
 function expandTxLocal(tx, startDate, endDate) {
@@ -133,7 +144,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
   }, [instances, states, amounts, newTxs, baselineBalance, actualBalance])
 
   function addNewTx() {
-    setNewTxs(prev => [...prev, { label: '', amount: '', type: 'expense' }])
+    setNewTxs(prev => [...prev, { label: '', amount: '', type: 'expense', date: today }])
   }
 
   function updateNewTx(i, field, val) {
@@ -219,7 +230,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
               <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>Expected</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.textMid }}>{fmt(baselineBalance + approvedTotal)}</div>
             </div>
-            <div style={{ flex: 1, background: unexplainedZero ? '#064e3b' : '#450a0a', borderRadius: 8, padding: '8px 10px', textAlign: 'center', border: `1px solid ${unexplainedZero ? C.green : C.red}` }}>
+            <div style={{ flex: 1, background: unexplainedZero ? C.greenBg : C.redBg, borderRadius: 8, padding: '8px 10px', textAlign: 'center', border: `1px solid ${unexplainedZero ? C.green : C.red}` }}>
               <div style={{ fontSize: 9, color: unexplainedZero ? C.green : C.red, textTransform: 'uppercase', letterSpacing: 1 }}>Unexplained</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: unexplainedZero ? C.green : C.red }}>
                 {unexplainedZero ? '✓ $0' : (unexplained > 0 ? '+' : '') + fmt(unexplained)}
@@ -254,7 +265,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
                       onClick={() => toggleApprove(inst.key)}
                       style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${isApproved || isModified ? C.green : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}
                     >
-                      {(isApproved || isModified) && <span style={{ color: '#0a0f1a', fontWeight: 700 }}>✓</span>}
+                      {(isApproved || isModified) && <span style={{ color: 'var(--c-btn-text)', fontWeight: 700 }}>✓</span>}
                     </button>
 
                     {/* Label */}
@@ -299,15 +310,20 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 10, color: C.orange, textTransform: 'uppercase', letterSpacing: 2, padding: '10px 0 6px', fontWeight: 700 }}>New transactions</div>
               {newTxs.map((nt, i) => (
-                <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 8, alignItems: 'center' }}>
-                  <input style={{ ...S.inp, flex: 2 }} placeholder="Label" value={nt.label} onChange={e => updateNewTx(i, 'label', e.target.value)} />
-                  <select style={{ ...S.inp, flex: 1 }} value={nt.type} onChange={e => updateNewTx(i, 'type', e.target.value)}>
-                    <option value="expense">Expense</option>
-                    <option value="income">Income</option>
-                    <option value="transfer">Transfer</option>
-                  </select>
-                  <input style={{ ...S.inp, flex: 1 }} type="number" step="0.01" placeholder="0.00" value={nt.amount} onChange={e => updateNewTx(i, 'amount', e.target.value)} />
-                  <button onClick={() => removeNewTx(i)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18 }}>×</button>
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
+                    <input style={{ ...S.inp, flex: 2 }} placeholder="Label" value={nt.label} onChange={e => updateNewTx(i, 'label', e.target.value)} />
+                    <button onClick={() => removeNewTx(i)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, flexShrink: 0 }}>×</button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <select style={{ ...S.inp, flex: 1 }} value={nt.type} onChange={e => updateNewTx(i, 'type', e.target.value)}>
+                      <option value="expense">Expense</option>
+                      <option value="income">Income</option>
+                      <option value="transfer">Transfer</option>
+                    </select>
+                    <input style={{ ...S.inp, flex: 1 }} type="number" step="0.01" placeholder="0.00" value={nt.amount} onChange={e => updateNewTx(i, 'amount', e.target.value)} />
+                    <input style={{ ...S.inp, flex: 1 }} type="date" value={nt.date || today} onChange={e => updateNewTx(i, 'date', e.target.value)} />
+                  </div>
                 </div>
               ))}
             </div>

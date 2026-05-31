@@ -6,18 +6,28 @@ import GoalsTab from './GoalsTab'
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const C = {
-  bg: '#0a0f1a', surface: '#111827', surfaceHigh: '#1e293b',
-  border: '#1e293b', text: '#f1f5f9', textMid: '#94a3b8', textLow: '#475569',
-  green: '#4ade80', greenBg: '#064e3b', red: '#f87171', redBg: '#450a0a',
-  orange: '#f97316', purple: '#a78bfa', blue: '#38bdf8',
+  bg:         'var(--c-bg)',
+  surface:    'var(--c-surface)',
+  surfaceHigh:'var(--c-surface-hi)',
+  border:     'var(--c-border)',
+  text:       'var(--c-text)',
+  textMid:    'var(--c-text-mid)',
+  textLow:    'var(--c-text-low)',
+  green:      'var(--c-positive)',
+  greenBg:    'var(--c-pos-bg)',
+  red:        'var(--c-negative)',
+  redBg:      'var(--c-neg-bg)',
+  orange:     'var(--c-warning)',
+  purple:     'var(--c-accent)',
+  blue:       'var(--c-info)',
 }
 const S = {
-  root: { fontFamily: "'DM Mono','Courier New',monospace", background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 72 },
+  root: { fontFamily: "'Lato', sans-serif", background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 72 },
   card: { background: C.surface, borderRadius: 14, padding: 14, marginBottom: 12, border: `1px solid ${C.border}` },
-  inp: { background: '#0f172a', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
-  sel: { background: '#0f172a', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
+  inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
+  sel: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
   lbl: { fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
-  btn: (bg, light) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 18px', color: light ? C.textMid : '#0a0f1a', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.3 }),
+  btn: (bg, light) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 18px', color: light ? C.textMid : 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.3 }),
   secHead: (c) => ({ fontSize: 10, color: c || C.textLow, letterSpacing: 3, textTransform: 'uppercase', margin: '16px 0 8px', fontWeight: 700 }),
   row: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 0', borderBottom: `1px solid ${C.border}` },
 }
@@ -90,7 +100,7 @@ function Spinner() {
 }
 
 function Tag({ color, children }) {
-  return <span style={{ fontSize: 9, background: color + '22', color, borderRadius: 4, padding: '2px 6px', letterSpacing: 1, textTransform: 'uppercase', marginLeft: 4, whiteSpace: 'nowrap' }}>{children}</span>
+  return <span style={{ fontSize: 9, background: `color-mix(in srgb, ${color} 13%, transparent)`, color, borderRadius: 4, padding: '2px 6px', letterSpacing: 1, textTransform: 'uppercase', marginLeft: 4, whiteSpace: 'nowrap' }}>{children}</span>
 }
 
 function RecurBadge({ r }) {
@@ -133,7 +143,7 @@ function AuthScreen() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
             {['signin', 'signup'].map(m => (
               <button key={m} onClick={() => { setMode(m); setError(null); setSuccess(null) }}
-                style={{ flex: 1, background: mode === m ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 8, padding: '8px 0', color: mode === m ? '#0a0f1a' : C.textLow, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                style={{ flex: 1, background: mode === m ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 8, padding: '8px 0', color: mode === m ? 'var(--c-btn-text)' : C.textLow, fontFamily: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 {m === 'signin' ? 'Sign in' : 'Create account'}
               </button>
             ))}
@@ -189,7 +199,7 @@ function BookSetup({ session, onComplete }) {
           <div style={S.lbl}>Book name</div>
           <input style={{ ...S.inp, marginBottom: 14 }} value={bookName} onChange={e => setBookName(e.target.value)} />
           {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{error}</div>}
-          <div style={{ fontSize: 12, color: C.orange, background: C.orange + '18', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: C.orange, background: 'var(--c-warn-bg)', borderRadius: 8, padding: '10px 12px', marginBottom: 12 }}>
             Import existing accounts & transactions into this book?
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -292,116 +302,194 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
 }
 
 // ─── OVERVIEW TAB ─────────────────────────────────────────────────────────────
-function OverviewTab({ accounts, transactions, overrides, onReconcile }) {
+function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles }) {
   const today = todayStr()
-  const end30 = new Date(); end30.setDate(end30.getDate() + 30)
-  const end30str = end30.toISOString().slice(0, 10)
+  const [envelopes, setEnvelopes] = useState([])
+
+  useEffect(() => {
+    async function loadEnvelopes() {
+      const { data: cycles } = await supabase
+        .from('pay_cycles')
+        .select('id')
+        .eq('book_id', bookId)
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .limit(1)
+      if (!cycles?.length) return
+      const { data: envs } = await supabase
+        .from('cycle_envelopes')
+        .select('*')
+        .eq('cycle_id', cycles[0].id)
+      setEnvelopes(envs || [])
+    }
+    if (bookId) loadEnvelopes()
+  }, [bookId, today])
 
   const totalCash = accounts
     .filter(a => a.type !== 'credit')
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
-  // Next 14 days transactions
   const end14 = new Date(); end14.setDate(end14.getDate() + 14)
   const end14str = end14.toISOString().slice(0, 10)
 
-  const upcoming = useMemo(() => {
+  // Find next income date within 14 days
+  const nextIncomeDate = useMemo(() => {
+    const dates = []
+    for (const tx of transactions.filter(t => t.type === 'income')) {
+      dates.push(...expandTx(tx, today, end14str))
+    }
+    dates.sort()
+    return dates[0] || null
+  }, [transactions, today, end14str])
+
+  // Bills strictly before next income (or all 14d if no income coming)
+  const billsUntilNext = useMemo(() => {
+    const cutoff = nextIncomeDate || end14str
     const items = []
-    for (const tx of transactions) {
-      const dates = expandTx(tx, today, end14str)
+    for (const tx of transactions.filter(t => t.type === 'expense')) {
+      const dates = expandTx(tx, today, cutoff)
       for (const d of dates) {
+        if (nextIncomeDate && d >= nextIncomeDate) continue
         const ov = getOverride(overrides, tx.id, d)
         if (ov?.action === 'skipped') continue
-        items.push({ tx, date: d, override: ov })
+        const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
+        items.push({ tx, date: d, amt })
       }
     }
-    return items.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 20)
-  }, [transactions, overrides, today, end14str])
+    return items.sort((a, b) => a.date.localeCompare(b.date))
+  }, [transactions, overrides, today, nextIncomeDate, end14str])
 
-  const inc30 = useMemo(() => {
-    let s = 0
-    for (const tx of transactions.filter(t => t.type === 'income')) {
-      expandTx(tx, today, end30str).forEach(() => { s += parseFloat(tx.amount) || 0 })
-    }
-    return s
-  }, [transactions, today, end30str])
+  const billsTotal = billsUntilNext.reduce((s, i) => s + i.amt, 0)
+  const safeToSpend = totalCash - billsTotal
 
-  const exp30 = useMemo(() => {
-    let s = 0
-    for (const tx of transactions.filter(t => t.type === 'expense')) {
-      expandTx(tx, today, end30str).forEach(() => { s += parseFloat(tx.amount) || 0 })
-    }
-    return s
-  }, [transactions, today, end30str])
+  // 14-day calendar grid
+  const calendarDays = useMemo(() => {
+    const WDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() + i)
+      const ds = d.toISOString().slice(0, 10)
+      let net = 0
+      for (const tx of transactions) {
+        if (!expandTx(tx, ds, ds).length) continue
+        const ov = getOverride(overrides, tx.id, ds)
+        if (ov?.action === 'skipped') continue
+        const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
+        net += tx.type === 'income' ? amt : -amt
+      }
+      return { ds, day: d.getDate(), wday: WDAYS[d.getDay()], net, isToday: i === 0, isPayday: ds === nextIncomeDate }
+    })
+  }, [transactions, overrides, nextIncomeDate])
 
-  const net30 = totalCash + inc30 - exp30
+  // Envelopes at ≥90% usage
+  const lowEnvelopes = useMemo(() =>
+    envelopes.filter(env => {
+      const allocated = parseFloat(env.allocated_amount) || 0
+      if (allocated <= 0) return false
+      return (parseFloat(env.spent_amount) || 0) / allocated >= 0.9
+    }),
+  [envelopes])
 
   return (
     <div>
-      {/* Net position */}
-      <div style={{ background: net30 >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${net30 >= 0 ? C.green : C.red}` }}>
-        <div style={{ fontSize: 10, color: net30 >= 0 ? C.green : C.red, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>Net Position (30d)</div>
-        <div style={{ fontSize: 32, fontWeight: 700, color: net30 >= 0 ? C.green : C.red, letterSpacing: -1 }}>{fmtAmt(net30)}</div>
-        <div style={{ fontSize: 11, color: net30 >= 0 ? C.green : C.red, marginTop: 2 }}>{net30 >= 0 ? 'Looking covered' : 'Shortfall detected'}</div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-        <div style={S.card}>
-          <div style={S.lbl}>Cash on hand</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.green }}>{fmtAmt(totalCash) || '--'}</div>
+      {/* Safe to spend hero */}
+      <div style={{ background: safeToSpend >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${safeToSpend >= 0 ? C.green : C.red}` }}>
+        <div style={{ fontSize: 10, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>
+          Safe to spend{nextIncomeDate ? ` · til ${fmtDateLabel(nextIncomeDate)}` : ' · 14d outlook'}
         </div>
-        <div style={S.card}>
-          <div style={S.lbl}>Income (30d)</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.green }}>{fmtAmt(inc30) || '--'}</div>
-        </div>
-        <div style={S.card}>
-          <div style={S.lbl}>Bills (30d)</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.red }}>{fmtAmt(exp30) || '--'}</div>
-        </div>
-        <div style={{ ...S.card, cursor: 'pointer' }} onClick={() => accounts[0] && onReconcile(accounts[0])}>
-          <div style={S.lbl}>Reconcile</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.purple }}>→ Update balance</div>
+        <div style={{ fontSize: 36, fontWeight: 700, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: -1 }}>{fmtAmt(safeToSpend)}</div>
+        <div style={{ fontSize: 11, color: safeToSpend >= 0 ? C.green : C.red, marginTop: 4, display: 'flex', gap: 16 }}>
+          <span>{fmtAmt(totalCash)} cash</span>
+          {billsTotal > 0 && <span>− {fmtAmt(billsTotal)} bills</span>}
         </div>
       </div>
 
-      {/* Accounts quick view */}
+      {/* Accounts */}
       <div style={S.card}>
-        <div style={{ ...S.lbl, marginBottom: 10 }}>Accounts</div>
+        <div style={{ ...S.lbl, marginBottom: 8 }}>Accounts</div>
+        {accounts.length === 0 && <div style={{ fontSize: 12, color: C.textLow }}>No accounts yet</div>}
         {accounts.map((a, i) => (
           <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < accounts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>
-              {fmt(a.balance) || '--'}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
+              {a.type && <div style={{ fontSize: 10, color: C.textLow }}>{a.type}</div>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance) || '--'}</div>
+              <span style={{ fontSize: 10, color: C.purple }}>↺</span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
-        <div style={S.card}>
-          <div style={{ ...S.lbl, marginBottom: 10 }}>Next 14 days</div>
-          {upcoming.map((item, i) => {
-            const ov = item.override
-            const isIncome = item.tx.type === 'income'
-            const amt = ov?.action === 'modified' ? ov.modified_amount : item.tx.amount
-            const state = ov?.action || 'projected'
-            return (
-              <div key={`${item.tx.id}:${item.date}`} style={{ ...S.row, borderBottom: i < upcoming.length - 1 ? `1px solid ${C.border}` : 'none', opacity: state === 'skipped' ? 0.4 : 1 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, fontStyle: state === 'projected' ? 'italic' : 'normal', color: isIncome ? C.green : C.text }}>
-                      {item.tx.label}
-                    </span>
-                    {state === 'approved' && <span style={{ fontSize: 11, color: C.green }}>✓</span>}
-                    {state === 'modified' && <span style={{ fontSize: 11, color: C.orange }}>✎</span>}
-                    {state === 'skipped' && <span style={{ fontSize: 11, color: C.textLow }}>⊘</span>}
-                    <RecurBadge r={item.tx.recurrence} />
-                  </div>
-                  <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>{fmtDateLabel(item.date)} · {item.tx.account}</div>
+      {/* 14-day calendar grid */}
+      <div style={S.card}>
+        <div style={{ ...S.lbl, marginBottom: 10 }}>Next 14 days</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+          {calendarDays.map(({ ds, day, wday, net, isToday, isPayday }) => (
+            <div key={ds} style={{ background: isToday ? C.surfaceHigh : 'transparent', borderRadius: 7, padding: '5px 3px', border: isToday ? `1px solid ${C.purple}` : isPayday ? `1px solid ${C.green}` : `1px solid ${C.border}`, textAlign: 'center', minHeight: 52 }}>
+              <div style={{ fontSize: 8, color: isToday ? C.purple : isPayday ? C.green : C.textLow }}>{wday}</div>
+              <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? C.purple : isPayday ? C.green : C.textMid }}>{day}</div>
+              {net !== 0 && (
+                <div style={{ fontSize: 8, fontWeight: 700, color: net > 0 ? C.green : C.red, lineHeight: 1.3, marginTop: 2 }}>
+                  {net > 0 ? '+' : ''}{fmtAmt(net)}
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red }}>
-                  {isIncome ? '+' : '-'}{fmt(amt)}
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Bills til next payday */}
+      {billsUntilNext.length > 0 && (
+        <div style={S.card}>
+          <div style={{ ...S.lbl, marginBottom: 8 }}>Bills til {nextIncomeDate ? fmtDateLabel(nextIncomeDate) : 'next income'}</div>
+          {billsUntilNext.map((item, i) => (
+            <div key={`${item.tx.id}:${item.date}`} style={{ ...S.row, borderBottom: i < billsUntilNext.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{item.tx.label}</div>
+                <div style={{ fontSize: 10, color: C.textLow }}>{fmtDateLabel(item.date)} · {item.tx.account}</div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.red }}>−{fmt(item.amt)}</div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 12, color: C.textLow }}>Total: <span style={{ color: C.red, fontWeight: 700 }}>{fmt(billsTotal)}</span></span>
+          </div>
+        </div>
+      )}
+
+      {/* Tight envelopes (≥90% used) */}
+      {lowEnvelopes.length > 0 && (
+        <div style={S.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={S.lbl}>Tight envelopes</div>
+            <button onClick={onGoToCycles} style={{ background: 'none', border: 'none', color: C.purple, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>Go to Cycles →</button>
+          </div>
+          {lowEnvelopes.map(env => {
+            const allocated = parseFloat(env.allocated_amount) || 0
+            const spent = parseFloat(env.spent_amount) || 0
+            const remaining = allocated - spent
+            const pct = Math.min(100, (spent / allocated) * 100)
+            const isOver = spent > allocated
+            return (
+              <div key={env.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {env.color && <div style={{ width: 8, height: 8, borderRadius: '50%', background: env.color, flexShrink: 0 }} />}
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{env.name}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: isOver ? C.red : C.orange }}>
+                    {isOver ? `Over ${fmt(Math.abs(remaining))}` : `${fmt(remaining)} left`}
+                  </span>
+                </div>
+                <div style={{ height: 5, background: C.surfaceHigh, borderRadius: 3, overflow: 'hidden', marginBottom: 5 }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: isOver ? C.red : C.orange, borderRadius: 3 }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: C.textLow }}>{Math.round(pct)}% used</span>
+                  <button onClick={onGoToCycles} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px', color: C.textMid, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Reassign →
+                  </button>
                 </div>
               </div>
             )
@@ -555,9 +643,9 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
                   {/* Approve toggle */}
                   <button
                     onClick={() => quickApprove(inst.tx, inst.date, inst.state)}
-                    style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved || isModified ? C.green : isPast ? C.orange + '80' : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
+                    style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved || isModified ? C.green : isPast ? 'var(--c-warn-50)' : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
                   >
-                    {(isApproved || isModified) && <span style={{ color: '#0a0f1a', fontWeight: 900 }}>✓</span>}
+                    {(isApproved || isModified) && <span style={{ color: 'var(--c-btn-text)', fontWeight: 900 }}>✓</span>}
                   </button>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -566,7 +654,7 @@ function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
                     </div>
                     <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>
                       {inst.tx.account}
-                      {inst.tx.recurrence !== 'once' && <span style={{ color: C.blue + 'aa' }}> · ↻ {inst.tx.recurrence}</span>}
+                      {inst.tx.recurrence !== 'once' && <span style={{ color: 'var(--c-info-67)' }}> · ↻ {inst.tx.recurrence}</span>}
                     </div>
                   </div>
 
@@ -691,7 +779,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
                 </div>
               )}
               {bal != null && (
-                <div style={{ fontSize: 9, color: bal >= 0 ? C.green + 'aa' : C.red + 'aa', marginTop: 2 }}>
+                <div style={{ fontSize: 9, color: bal >= 0 ? 'var(--c-positive-67)' : 'var(--c-negative-67)', marginTop: 2 }}>
                   {fmtAmt(bal)}
                 </div>
               )}
@@ -884,8 +972,8 @@ function TransactionsTab({ transactions, bookId, onRefresh }) {
               <span style={{ fontSize: 13, fontWeight: 600 }}>{tx.label}</span>
               <RecurBadge r={tx.recurrence} />
               {tx.type === 'income'
-                ? <span style={{ fontSize: 9, background: C.green + '22', color: C.green, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>INCOME</span>
-                : <span style={{ fontSize: 9, background: C.red + '22', color: C.red, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>EXPENSE</span>
+                ? <span style={{ fontSize: 9, background: 'var(--c-positive-13)', color: C.green, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>INCOME</span>
+                : <span style={{ fontSize: 9, background: 'var(--c-negative-13)', color: C.red, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>EXPENSE</span>
               }
             </div>
             <div style={{ fontSize: 10, color: C.textLow }}>
@@ -908,7 +996,7 @@ function TransactionsTab({ transactions, bookId, onRefresh }) {
 // ─── CHECK-IN BANNER ──────────────────────────────────────────────────────────
 function CheckInBanner({ onReconcile, onQuickAdd, onDismiss }) {
   return (
-    <div style={{ background: C.orange + '18', border: `1px solid ${C.orange}44`, borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+    <div style={{ background: 'var(--c-warn-bg)', border: `1px solid var(--c-warn-border)`, borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: C.orange, marginBottom: 8 }}>Daily check-in</div>
       <div style={{ fontSize: 11, color: C.textMid, marginBottom: 10 }}>How's the money looking today?</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -1258,6 +1346,37 @@ function NotificationSheet({ session, bookId, onClose }) {
   )
 }
 
+// ─── THEME PICKER ─────────────────────────────────────────────────────────────
+const THEMES = [
+  { id: 'dark',         label: 'Dark',         icon: '◑' },
+  { id: 'light',        label: 'Light',        icon: '○' },
+  { id: 'high-contrast',label: 'High Contrast',icon: '◉' },
+  { id: 'color-blind',  label: 'Color-blind',  icon: '◐' },
+]
+
+function ThemePicker({ current, onClose }) {
+  function apply(id) {
+    document.documentElement.setAttribute('data-theme', id)
+    localStorage.setItem('lt_theme', id)
+    onClose()
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 300 }} onClick={onClose}>
+      <div style={{ position: 'absolute', top: 68, right: 12, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden', minWidth: 180 }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '10px 14px 6px' }}>Appearance</div>
+        {THEMES.map(t => (
+          <button key={t.id} onClick={() => apply(t.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: current === t.id ? C.surfaceHigh : 'none', border: 'none', borderTop: `1px solid ${C.border}`, padding: '11px 14px', color: C.text, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
+            <span style={{ fontSize: 16 }}>{t.icon}</span>
+            <span style={{ flex: 1 }}>{t.label}</span>
+            {current === t.id && <span style={{ fontSize: 11, color: C.purple }}>✓</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
@@ -1271,6 +1390,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showBookPicker, setShowBookPicker] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
   const [showShareSheet, setShowShareSheet] = useState(false)
+  const [showAccountPicker, setShowAccountPicker] = useState(false)
+  const [showThemePicker, setShowThemePicker] = useState(false)
+  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('lt_theme') || 'dark')
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
 
@@ -1322,7 +1444,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     for (const nt of newTxs) {
       await supabase.from('cashflow_transactions').insert({
         label: nt.label, amount: parseFloat(nt.amount), type: nt.type,
-        account: acct.name, date: newBaselineDate, recurrence: 'once', book_id: book.id,
+        account: acct.name, date: nt.date || newBaselineDate, recurrence: 'once', book_id: book.id,
       })
     }
 
@@ -1360,7 +1482,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   return (
     <div style={S.root}>
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg,#0f172a,#1e1b4b)', padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ background: 'var(--c-header-grad)', padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 3, textTransform: 'uppercase' }}>
@@ -1381,6 +1503,13 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             </button>
             <button onClick={() => setShowNotifSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
               🔔
+            </button>
+            <button
+              onClick={() => setShowThemePicker(v => !v)}
+              title="Appearance"
+              style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
+            >
+              ◐
             </button>
             <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
               Sign out
@@ -1430,7 +1559,14 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       <div style={{ padding: '14px 14px 0' }}>
         {showCheckin && (
           <CheckInBanner
-            onReconcile={() => { setShowCheckin(false); accounts[0] && setReconcileAccount(accounts[0]) }}
+            onReconcile={() => {
+              setShowCheckin(false)
+              if (accounts.length === 1) {
+                setReconcileAccount(accounts[0])
+              } else if (accounts.length > 1) {
+                setShowAccountPicker(true)
+              }
+            }}
             onQuickAdd={() => { setShowCheckin(false); setShowAddTx(true) }}
             onDismiss={dismissCheckin}
           />
@@ -1439,7 +1575,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
         {loading ? <Spinner /> : (
           <>
             {activeTab === 'overview' && (
-              <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides} onReconcile={setReconcileAccount} />
+              <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides} onReconcile={setReconcileAccount} bookId={book.id} onGoToCycles={() => setActiveTab('cycles')} />
             )}
             {activeTab === 'cycles' && (
               <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />
@@ -1473,6 +1609,44 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           </button>
         ))}
       </div>
+
+      {/* Theme picker */}
+      {showThemePicker && (
+        <ThemePicker
+          current={currentTheme}
+          onClose={() => {
+            setCurrentTheme(localStorage.getItem('lt_theme') || 'dark')
+            setShowThemePicker(false)
+          }}
+        />
+      )}
+
+      {/* Account picker for reconcile */}
+      {showAccountPicker && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 800 }} onClick={() => setShowAccountPicker(false)}>
+          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderRadius: '20px 20px 0 0', padding: '20px 18px 36px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Reconcile which account?</div>
+              <button onClick={() => setShowAccountPicker(false)} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
+            </div>
+            {accounts.map(a => (
+              <button
+                key={a.id}
+                onClick={() => { setShowAccountPicker(false); setReconcileAccount(a) }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: 10, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', marginBottom: 8, textAlign: 'left' }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600 }}>{a.name}</div>
+                  {a.type && <div style={{ fontSize: 10, color: C.textLow, marginTop: 2 }}>{a.type}</div>}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>
+                  {fmt(a.balance) || '--'}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {reconcileAccount && (

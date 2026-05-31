@@ -5,7 +5,7 @@ Instructions here apply to this project and are shared with team members.
 ## Context
 
 ## Project Overview
-React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`). Bottom tab bar with 6 tabs: Home, Cycles, Agenda, Cal, Accounts, Manage.
+React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar with 7 tabs: Home, Cycles, Goals, Agenda, Cal, Accounts, Manage.
 
 ## Tech Stack
 - React (Vite), inline styles only — no CSS files or Tailwind
@@ -45,4 +45,17 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - Invitee sees banner at login to accept/decline
 - Accepted → row inserted into `book_members`, shared book appears in book switcher
 - Book loading queries both owned books and `book_members` rows
+
+## Home Tab (OverviewTab) ✓ Redesigned
+`OverviewTab` in `src/App.jsx` accepts `{ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles }`.
+- **Safe to spend** hero card: `totalCash − bills before next income occurrence` (14d lookahead)
+- **Accounts** list: tap any row to open ReconcileModal for that account
+- **14-day calendar grid**: 7-col × 2-row, each cell shows day net flow; payday cell highlighted green, today purple
+- **Bills til next payday**: expenses due before the next income transaction, with running total
+- **Tight envelopes**: loads active `cycle_envelopes` from Supabase (cycle covering today), shows any at ≥90% usage with "Reassign →" → navigates to Cycles tab
+
+## Reconcile Flow
+- `ReconcileModal` (`src/ReconcileModal.jsx`): "Add transaction to explain difference" rows now include a **date field** (default today); date is saved per-transaction (not pinned to baseline date)
+- **Multi-account picker**: `CheckInBanner` "Reconcile balance" now shows an account picker bottom sheet when there are 2+ accounts; single account still opens directly
+  - State: `showAccountPicker` in `MainApp`
 

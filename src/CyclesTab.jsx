@@ -9,16 +9,26 @@ import {
 } from './lib/cycleLogic'
 
 const C = {
-  bg: '#0a0f1a', surface: '#111827', surfaceHigh: '#1e293b',
-  border: '#1e293b', text: '#f1f5f9', textMid: '#94a3b8', textLow: '#475569',
-  green: '#4ade80', greenBg: '#064e3b', red: '#f87171', redBg: '#450a0a',
-  orange: '#f97316', purple: '#a78bfa', blue: '#38bdf8',
+  bg:         'var(--c-bg)',
+  surface:    'var(--c-surface)',
+  surfaceHigh:'var(--c-surface-hi)',
+  border:     'var(--c-border)',
+  text:       'var(--c-text)',
+  textMid:    'var(--c-text-mid)',
+  textLow:    'var(--c-text-low)',
+  green:      'var(--c-positive)',
+  greenBg:    'var(--c-pos-bg)',
+  red:        'var(--c-negative)',
+  redBg:      'var(--c-neg-bg)',
+  orange:     'var(--c-warning)',
+  purple:     'var(--c-accent)',
+  blue:       'var(--c-info)',
 }
 const S = {
   card: { background: C.surface, borderRadius: 14, padding: 14, marginBottom: 12, border: `1px solid ${C.border}` },
-  inp: { background: '#0f172a', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
+  inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
   lbl: { fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
-  btn: (bg, light) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 18px', color: light ? C.textMid : '#0a0f1a', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.3 }),
+  btn: (bg, light) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 18px', color: light ? C.textMid : 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.3 }),
   secHead: (c) => ({ fontSize: 10, color: c || C.textLow, letterSpacing: 3, textTransform: 'uppercase', margin: '16px 0 8px', fontWeight: 700 }),
   sheet: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' },
   sheetInner: { background: C.surface, borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column' },
@@ -730,7 +740,7 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
               </div>
               <div style={{
                 flex: 1, borderRadius: 8, padding: '8px 10px', textAlign: 'center',
-                background: stats.safeToSpend < 0 ? C.redBg : stats.safeToSpend < 50 ? '#431407' : C.greenBg,
+                background: stats.safeToSpend < 0 ? C.redBg : stats.safeToSpend < 50 ? 'var(--c-warn-near-empty)' : C.greenBg,
                 border: `1px solid ${stats.safeToSpend < 0 ? C.red : stats.safeToSpend < 50 ? C.orange : C.green}`,
               }}>
                 <div style={{ fontSize: 9, color: stats.safeToSpend < 0 ? C.red : stats.safeToSpend < 50 ? C.orange : C.green, textTransform: 'uppercase', letterSpacing: 1 }}>
