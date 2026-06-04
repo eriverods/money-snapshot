@@ -297,20 +297,18 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
             </select>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <div>
-            <div style={S.lbl}>Date</div>
-            <input style={S.inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} />
-          </div>
-          <div>
-            <div style={S.lbl}>Repeats</div>
-            <select style={S.sel} value={form.recurrence} onChange={e => set('recurrence', e.target.value)}>
-              <option value="once">Once</option>
-              <option value="weekly">Weekly</option>
-              <option value="biweekly">Biweekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={S.lbl}>Date</div>
+          <input style={S.inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={S.lbl}>Repeats</div>
+          <select style={S.sel} value={form.recurrence} onChange={e => set('recurrence', e.target.value)}>
+            <option value="once">Once</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Biweekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
         </div>
         {form.recurrence !== 'once' && (
           <div style={{ marginBottom: 10 }}>
@@ -1562,77 +1560,87 @@ function NotificationSheet({ session, bookId, onClose }) {
 
 // ─── THEME PICKER ─────────────────────────────────────────────────────────────
 const PALETTES = [
-  { id: 'amethyst', label: 'Amethyst', swatches: ['#1d0a30','#c9a0e0','#79aea3','#c97c73','#f3c178'] },
-  { id: 'sage',     label: 'Sage',     swatches: ['#101e14','#7ab899','#6bad85','#c9826e','#e8c87a'] },
-  { id: 'cobalt',   label: 'Cobalt',   swatches: ['#0d1628','#6a9fd4','#76b4cc','#c97c6e','#f0c870'] },
-]
-const A11Y_OPTIONS = [
-  { id: 'none',          label: 'None' },
-  { id: 'high-contrast', label: 'High Contrast' },
-  { id: 'color-blind',   label: 'Color-Blind' },
+  {
+    id: 'still_water', label: 'Still Water',
+    swatches: ['#131f24','#1e3a42','#79aea3','#e8a87c','#eef4f6'],
+  },
+  {
+    id: 'warm_dusk', label: 'Warm Dusk',
+    swatches: ['#1e2a20','#2c3a2e','#8fad98','#d4956a','#f5ede4'],
+  },
+  {
+    id: 'soft_earth', label: 'Soft Earth',
+    swatches: ['#241d18','#3a2e28','#9aaa7a','#c47a6a','#f4ede8'],
+  },
 ]
 
-function parseTheme(id) {
-  if (!id || id === 'dark')    return { palette: 'amethyst', mode: 'dark',  a11y: 'none' }
-  if (id === 'light')          return { palette: 'amethyst', mode: 'light', a11y: 'none' }
-  if (id === 'high-contrast')  return { palette: 'amethyst', mode: 'dark',  a11y: 'high-contrast' }
-  if (id === 'color-blind')    return { palette: 'amethyst', mode: 'dark',  a11y: 'color-blind' }
-  const [m, p] = id.split('-') // e.g. 'dark-sage', 'light-cobalt'
-  return { palette: p || 'amethyst', mode: m || 'dark', a11y: 'none' }
+const A11Y_OPTIONS = [
+  { id: 'none',            label: 'None' },
+  { id: 'high_contrast',   label: 'High Contrast' },
+  { id: 'colorblind_safe', label: 'Color-Blind' },
+]
+
+// Preview colors per palette for ModeCard (hardcoded so they don't shift with theme)
+const PALETTE_PREVIEW = {
+  still_water: {
+    dark:  { bg: '#131f24', surface: '#1e3a42', header: '#0a1820', accent: '#e8a87c', pos: '#79aea3', neg: '#e8a87c', textFaint: 'rgba(238,244,246,0.4)' },
+    light: { bg: '#eef4f6', surface: '#ffffff', header: '#1e3a42', accent: '#c47a4a', pos: '#2a6a7a', neg: '#c47a4a', textFaint: 'rgba(30,58,66,0.4)' },
+  },
+  warm_dusk: {
+    dark:  { bg: '#1e2a20', surface: '#2c3a2e', header: '#141e16', accent: '#e8b86d', pos: '#8fad98', neg: '#d4956a', textFaint: 'rgba(245,237,228,0.4)' },
+    light: { bg: '#f5ede4', surface: '#ffffff', header: '#2c3a2e', accent: '#b88040', pos: '#4a7a60', neg: '#a06040', textFaint: 'rgba(44,58,46,0.4)' },
+  },
+  soft_earth: {
+    dark:  { bg: '#241d18', surface: '#3a2e28', header: '#1a1410', accent: '#c4a882', pos: '#9aaa7a', neg: '#c47a6a', textFaint: 'rgba(244,237,232,0.4)' },
+    light: { bg: '#f4ede8', surface: '#ffffff', header: '#3a2e28', accent: '#8c6840', pos: '#5a7040', neg: '#9a5040', textFaint: 'rgba(58,46,40,0.4)' },
+  },
 }
 
-function buildThemeId(palette, mode, a11y) {
-  if (a11y !== 'none') return a11y
-  if (palette === 'amethyst') return mode
-  return `${mode}-${palette}`
+function applyThemeAttrs({ palette, mode, a11y }) {
+  const el = document.documentElement
+  el.setAttribute('data-palette', palette)
+  el.setAttribute('data-mode', mode)
+  el.setAttribute('data-accessibility', a11y || 'none')
 }
 
 function ModeCard({ id, selected, palette, onClick }) {
   const isDark = id === 'dark'
-  const bg      = isDark ? '#0d0814' : '#faf5ef'
-  const surface = isDark ? '#160e21' : '#ffffff'
-  const accent  = isDark ? '#c9a0e0' : '#42033d'
-  const pos     = isDark ? '#79aea3' : '#004346'
-  const neg     = isDark ? '#c97c73' : '#9a4e47'
-  const headerBg = isDark ? '#1d0a30' : '#42033d'
+  const pv = (PALETTE_PREVIEW[palette] || PALETTE_PREVIEW.still_water)[isDark ? 'dark' : 'light']
   return (
-    <button onClick={onClick} style={{ flex: 1, background: bg, border: `2px solid ${selected ? accent : 'transparent'}`, borderRadius: 12, padding: '10px 8px', cursor: 'pointer', textAlign: 'left', outline: 'none' }}>
+    <button onClick={onClick} style={{ flex: 1, background: pv.bg, border: `2px solid ${selected ? pv.accent : 'transparent'}`, borderRadius: 12, padding: '10px 8px', cursor: 'pointer', textAlign: 'left', outline: 'none' }}>
       {/* mini header */}
-      <div style={{ background: headerBg, borderRadius: 6, height: 14, marginBottom: 7, display: 'flex', alignItems: 'center', padding: '0 5px', gap: 4 }}>
-        <div style={{ width: 4, height: 4, borderRadius: '50%', background: isDark ? 'rgba(240,234,245,0.6)' : 'rgba(255,255,255,0.7)' }} />
-        <div style={{ flex: 1, height: 2, background: isDark ? 'rgba(240,234,245,0.25)' : 'rgba(255,255,255,0.35)', borderRadius: 1 }} />
-        <div style={{ width: 10, height: 2, background: isDark ? 'rgba(240,234,245,0.25)' : 'rgba(255,255,255,0.35)', borderRadius: 1 }} />
+      <div style={{ background: pv.header, borderRadius: 6, height: 14, marginBottom: 7, display: 'flex', alignItems: 'center', padding: '0 5px', gap: 4 }}>
+        <div style={{ width: 4, height: 4, borderRadius: '50%', background: isDark ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)' }} />
+        <div style={{ flex: 1, height: 2, background: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.4)', borderRadius: 1 }} />
+        <div style={{ width: 10, height: 2, background: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.4)', borderRadius: 1 }} />
       </div>
       {/* hero card */}
-      <div style={{ background: surface, borderRadius: 6, padding: '5px 7px', marginBottom: 5, border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
-        <div style={{ fontSize: 6, color: isDark ? 'rgba(240,234,245,0.45)' : 'rgba(26,10,24,0.45)', marginBottom: 2 }}>Safe to spend</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: pos }}>$1,240</div>
+      <div style={{ background: pv.surface, borderRadius: 6, padding: '5px 7px', marginBottom: 5, border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+        <div style={{ fontSize: 6, color: pv.textFaint, marginBottom: 2 }}>Safe to spend</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: pv.pos }}>$1,240</div>
       </div>
       {/* two mock rows */}
-      {[pos, neg].map((c, i) => (
-        <div key={i} style={{ background: surface, borderRadius: 5, padding: '4px 7px', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}>
-          <div style={{ width: 36, height: 4, background: isDark ? 'rgba(240,234,245,0.12)' : 'rgba(26,10,24,0.10)', borderRadius: 2 }} />
-          <div style={{ width: 18, height: 4, background: `${c}66`, borderRadius: 2 }} />
+      {[pv.pos, pv.neg].map((c, i) => (
+        <div key={i} style={{ background: pv.surface, borderRadius: 5, padding: '4px 7px', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div style={{ width: 36, height: 4, background: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)', borderRadius: 2 }} />
+          <div style={{ width: 18, height: 4, background: `${c}88`, borderRadius: 2 }} />
         </div>
       ))}
-      <div style={{ textAlign: 'center', fontSize: 11, fontWeight: selected ? 700 : 400, color: selected ? accent : (isDark ? 'rgba(240,234,245,0.45)' : 'rgba(26,10,24,0.45)'), marginTop: 5 }}>
-        {selected && '✓ '}{id === 'dark' ? 'Dark' : 'Light'}
+      <div style={{ textAlign: 'center', fontSize: 11, fontWeight: selected ? 700 : 400, color: selected ? pv.accent : pv.textFaint, marginTop: 5 }}>
+        {selected && '✓ '}{isDark ? 'Dark' : 'Light'}
       </div>
     </button>
   )
 }
 
-function ThemePicker({ current, onChange, onClose }) {
-  const p0 = parseTheme(current)
-  const [palette, setPalette] = useState(p0.palette)
-  const [mode, setMode] = useState(p0.mode)
-  const [a11y, setA11y] = useState(p0.a11y)
+function ThemePicker({ prefs, onSave, onClose }) {
+  const [palette, setPalette] = useState(prefs.palette)
+  const [mode, setMode]       = useState(prefs.mode)
+  const [a11y, setA11y]       = useState(prefs.a11y || 'none')
 
   function applyNow(p, m, a) {
-    const id = buildThemeId(p, m, a)
-    document.documentElement.setAttribute('data-theme', id)
-    localStorage.setItem('lt_theme', id)
-    onChange(id)
+    applyThemeAttrs({ palette: p, mode: m, a11y: a })
+    onSave({ palette: p, mode: m, a11y: a })
   }
   function pickPalette(p) { setPalette(p); applyNow(p, mode, a11y) }
   function pickMode(m)    { setMode(m); setA11y('none'); applyNow(palette, m, 'none') }
@@ -1657,12 +1665,12 @@ function ThemePicker({ current, onChange, onClose }) {
               return (
                 <button key={p.id} onClick={() => pickPalette(p.id)}
                   style={{ flex: 1, background: sel ? `${C.purple}18` : C.surfaceHigh, border: `2px solid ${sel ? C.purple : C.border}`, borderRadius: 12, padding: '10px 6px', cursor: 'pointer', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 3, justifyContent: 'center', marginBottom: 8 }}>
                     {p.swatches.map((s, i) => (
-                      <div key={i} style={{ width: 14, height: 14, borderRadius: '50%', background: s, flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }} />
+                      <div key={i} style={{ width: 13, height: 13, borderRadius: '50%', background: s, flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
                     ))}
                   </div>
-                  <div style={{ fontSize: 11, color: sel ? C.purple : C.textMid, fontWeight: sel ? 700 : 400 }}>
+                  <div style={{ fontSize: 10, color: sel ? C.purple : C.textMid, fontWeight: sel ? 700 : 400 }}>
                     {sel ? '✓ ' : ''}{p.label}
                   </div>
                 </button>
@@ -1695,7 +1703,7 @@ function ThemePicker({ current, onChange, onClose }) {
 }
 
 // ─── STACK MENU ───────────────────────────────────────────────────────────────
-function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onSignOut, onClose }) {
+function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onSignOut, onClose }) {
   const navItems = [
     { id: 'cycles',   icon: '⊙', label: 'Cycles',   desc: 'Plan spending with budget envelopes per pay period' },
     { id: 'goals',    icon: '◈', label: 'Goals',    desc: 'Named savings targets with progress tracking' },
@@ -1724,7 +1732,8 @@ function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onSignOut,
           <div style={{ borderTop: `1px solid ${C.border}`, margin: '8px 0 12px' }} />
 
           {[
-            { label: '🔔 Notifications', fn: () => { onShowNotif(); onClose() } },
+            { label: '🎨 Appearance',     fn: () => { onShowTheme(); onClose() } },
+            { label: '🔔 Notifications',  fn: () => { onShowNotif(); onClose() } },
             { label: '👥 Share Book',     fn: () => { onShowShare(); onClose() } },
           ].map(({ label, fn }) => (
             <button key={label} onClick={fn}
@@ -1835,11 +1844,45 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [showStack, setShowStack] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
-  const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('lt_theme') || 'dark')
+  const [prefs, setPrefs] = useState(() => {
+    try {
+      const c = localStorage.getItem('lt_prefs')
+      if (c) return JSON.parse(c)
+    } catch {}
+    return { palette: 'still_water', mode: 'dark', a11y: 'none' }
+  })
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
 
   const today = todayStr()
+
+  // Apply theme attrs immediately on mount and whenever prefs change
+  useEffect(() => { applyThemeAttrs(prefs) }, [prefs])
+
+  // Load user preferences from DB after session resolves
+  useEffect(() => {
+    if (!session) return
+    supabase.from('user_preferences').select('*').eq('user_id', session.user.id).single()
+      .then(({ data }) => {
+        if (data) {
+          const loaded = { palette: data.palette, mode: data.mode, a11y: data.accessibility }
+          setPrefs(loaded)
+          localStorage.setItem('lt_prefs', JSON.stringify(loaded))
+        }
+      })
+  }, [session])
+
+  async function savePrefs(newPrefs) {
+    setPrefs(newPrefs)
+    localStorage.setItem('lt_prefs', JSON.stringify(newPrefs))
+    await supabase.from('user_preferences').upsert({
+      user_id: session.user.id,
+      palette: newPrefs.palette,
+      mode: newPrefs.mode,
+      accessibility: newPrefs.a11y,
+      updated_at: new Date().toISOString(),
+    })
+  }
 
   useEffect(() => {
     const key = 'lt_checkin_' + today
@@ -1921,7 +1964,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   return (
     <div style={S.root}>
       {/* Header */}
-      <div style={{ background: 'var(--c-header-grad)', padding: '14px 16px 10px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ background: 'var(--c-header-grad)', padding: 'calc(14px + env(safe-area-inset-top)) 16px 10px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 3, textTransform: 'uppercase' }}>
@@ -1938,10 +1981,6 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             <button onClick={() => setShowHelp(true)} title="How it works"
               style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 14, cursor: 'pointer', padding: '4px 7px', lineHeight: 1, fontFamily: 'inherit' }}>
               ⓘ
-            </button>
-            <button onClick={() => setShowThemePicker(true)} title="Appearance"
-              style={{ background: 'none', border: 'none', color: showThemePicker ? C.purple : C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
-              ◐
             </button>
             <button onClick={() => setShowStack(true)} title="More"
               style={{ background: 'none', border: 'none', color: isStackActive ? C.purple : C.textLow, fontSize: 17, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
@@ -2043,9 +2082,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
       {/* Theme picker */}
       {showThemePicker && (
-        <ThemePicker current={currentTheme}
-          onChange={setCurrentTheme}
-          onClose={() => setShowThemePicker(false)} />
+        <ThemePicker prefs={prefs} onSave={savePrefs} onClose={() => setShowThemePicker(false)} />
       )}
 
       {/* Account picker for reconcile */}
@@ -2099,6 +2136,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           onNavigate={t => setActiveTab(t)}
           onShowNotif={() => setShowNotifSheet(true)}
           onShowShare={() => setShowShareSheet(true)}
+          onShowTheme={() => setShowThemePicker(true)}
           onSignOut={onSignOut}
           onClose={() => setShowStack(false)} />
       )}

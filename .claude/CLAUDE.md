@@ -59,10 +59,8 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Multi-account picker**: `CheckInBanner` "Reconcile balance" now shows an account picker bottom sheet when there are 2+ accounts; single account still opens directly
   - State: `showAccountPicker` in `MainApp`
 
-## Agenda Tab
-- `AgendaTab` in `src/App.jsx`
-- Each transaction instance has a ✎ pencil button to edit the amount inline
-- Edit UI shows: amount input + **"This time"** (creates/updates override with `action='modified'`) + **"All future"** (updates `cashflow_transactions.amount` directly); recurring transactions show both options, one-offs only show "This time"
+## Add Transaction Form
+- Date and Repeats fields are on separate rows (not side-by-side) to prevent overlap on mobile
 
 ## Accounts Tab
 - `type` column on `cashflow_accounts` — migration in `supabase/migrations/20260531_add_account_type.sql`
@@ -94,13 +92,22 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - Category filter available in History tab
 
 ## Theme System
-- 3 palettes: **Amethyst** (purple, default), **Sage** (forest green), **Cobalt** (navy blue)
-- 2 modes: **Dark** / **Light** (swappable per palette)
-- 3 accessibility overlays: **None** / **High Contrast** / **Color-Blind Safe**
-- Theme ID: `dark`, `light`, `high-contrast`, `color-blind`, `dark-sage`, `light-sage`, `dark-cobalt`, `light-cobalt`
-- Stored in `localStorage` key `lt_theme`; parsed/built by `parseTheme()` / `buildThemeId()`
-- ThemePicker is a bottom sheet (◐ header icon) with: palette swatch strip, mode preview cards (mini app mockup), accessibility segmented control
-- Saves immediately on tap (no confirm button)
+- 3 palettes × 2 modes applied via `data-palette` + `data-mode` on `<html>` element
+- **Still Water** (default, `still_water`) — muted blue-greens, calm
+- **Warm Dusk** (`warm_dusk`) — earthy, grounding, warm taupes and sage
+- **Soft Earth** (`soft_earth`) — warm stone, dusty rose, olive
+- Modes: `dark` / `light`
+- Accessibility: `none` / `high_contrast` / `colorblind_safe` (applied via `data-accessibility` on `<html>`)
+- Persisted in `user_preferences` Supabase table (palette, mode, accessibility columns)
+- Cached in `localStorage` key `lt_prefs` as JSON `{palette, mode, a11y}`
+- `applyThemeAttrs({palette, mode, a11y})` sets all three HTML attributes
+- `savePrefs(newPrefs)` in MainApp updates state + localStorage + upserts to DB
+- ThemePicker is a bottom sheet, accessed via 🎨 Appearance in StackMenu
+- Negative amounts NEVER use clinical red — all palettes use warm tones (dusty orange, terracotta, amber) for `--c-negative`
+
+## Safe Area (iOS)
+- Header padding: `calc(14px + env(safe-area-inset-top))` to clear Dynamic Island / status bar
+- `viewport-fit=cover` + `apple-mobile-web-app-status-bar-style: black-translucent` already in index.html
 
 ## Floating Action Button (FAB)
 - `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)
