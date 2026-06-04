@@ -615,20 +615,31 @@ export default function CyclesTab({ bookId, accounts, transactions }) {
 
   async function load() {
     setLoading(true)
-    const [{ data: cycles }, { data: tmpl }, { data: ovr }] = await Promise.all([
-      supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(1),
-      supabase.from('envelope_templates').select('*').eq('book_id', bookId).order('display_order'),
-      supabase.from('cashflow_overrides').select('*').eq('book_id', bookId),
-    ])
-    const latest = cycles?.[0] || null
-    setCycle(latest)
-    setTemplates(tmpl || [])
-    setOverrides(ovr || [])
-    if (latest) {
-      const { data: envs } = await supabase.from('cycle_envelopes').select('*').eq('cycle_id', latest.id)
-      setEnvelopes(envs || [])
+    try {
+      const [{ data: cycles }, { data: tmpl }] = await Promise.all([
+        supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(1),
+        supabase.from('envelope_templates').select('*').eq('book_id', bookId).order('display_order'),
+      ])
+      // cashflow_overrides has no book_id column — query via transaction IDs
+      const txIds = transactions.map(t => t.id)
+      let ovr = []
+      if (txIds.length > 0) {
+        const { data } = await supabase.from('cashflow_overrides').select('*').in('transaction_id', txIds)
+        ovr = data || []
+      }
+      const latest = cycles?.[0] || null
+      setCycle(latest)
+      setTemplates(tmpl || [])
+      setOverrides(ovr)
+      if (latest) {
+        const { data: envs } = await supabase.from('cycle_envelopes').select('*').eq('cycle_id', latest.id)
+        setEnvelopes(envs || [])
+      }
+    } catch (e) {
+      console.error('CyclesTab load error:', e)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   async function updateEnvelopeSpent(envId, newSpent) {

@@ -90,6 +90,18 @@ function getOverride(overrides, txId, instanceDate) {
   return overrides.find(o => String(o.transaction_id) === String(txId) && o.instance_date === instanceDate) || null
 }
 
+// ─── CATEGORIES ───────────────────────────────────────────────────────────────
+const DEFAULT_CATEGORIES = [
+  'Income','Housing','Transport','Groceries','Dining','Health',
+  'Subscriptions','Personal Care','Clothing','Entertainment',
+  'Savings Transfer','Debt Payment','Kids','Pets','Gifts','Other',
+]
+
+async function seedDefaultCategories(bookId) {
+  const rows = DEFAULT_CATEGORIES.map((name, i) => ({ book_id: bookId, name, sort_order: i, is_default: true }))
+  await supabase.from('categories').insert(rows)
+}
+
 // ─── SMALL COMPONENTS ─────────────────────────────────────────────────────────
 function Spinner() {
   return (
@@ -217,9 +229,13 @@ function BookSetup({ session, onComplete }) {
 }
 
 // ─── ADD TRANSACTION MODAL ────────────────────────────────────────────────────
-function AddTxModal({ bookId, accounts, onSave, onClose }) {
+function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType, defaultRecurrence }) {
   const today = todayStr()
-  const [form, setForm] = useState({ label: '', amount: '', type: 'expense', account: accounts[0]?.name || '', date: today, recurrence: 'once', end_date: '' })
+  const [form, setForm] = useState({
+    label: '', amount: '', type: defaultType || 'expense',
+    account: accounts[0]?.name || '', date: today,
+    recurrence: defaultRecurrence || 'once', end_date: '', category: '',
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -232,17 +248,20 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
       label: form.label, amount: parseFloat(form.amount), type: form.type,
       account: form.account, date: form.date, recurrence: form.recurrence,
       end_date: form.end_date || null, book_id: bookId,
+      category: form.category || null,
     })
     setSaving(false)
     if (e) { setError(e.message); return }
     onSave()
   }
 
+  const catOptions = categories?.length ? categories : DEFAULT_CATEGORIES.map(n => ({ name: n }))
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 900, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-      <div style={{ background: C.surface, borderRadius: '20px 20px 0 0', padding: '20px 18px 32px' }}>
+      <div style={{ background: C.surface, borderRadius: '20px 20px 0 0', padding: '20px 18px 32px', maxHeight: '92vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Add Transaction</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{defaultRecurrence && defaultRecurrence !== 'once' ? 'Add Recurring Bill' : 'Add Transaction'}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
@@ -261,7 +280,7 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
         </div>
         <div style={{ marginBottom: 10 }}>
           <div style={S.lbl}>Label</div>
-          <input style={S.inp} placeholder="e.g. Coffee" value={form.label} onChange={e => set('label', e.target.value)} autoFocus />
+          <input style={S.inp} placeholder="e.g. Rent" value={form.label} onChange={e => set('label', e.target.value)} autoFocus />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           <div>
@@ -271,11 +290,18 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
             </select>
           </div>
           <div>
+            <div style={S.lbl}>Category</div>
+            <select style={S.sel} value={form.category} onChange={e => set('category', e.target.value)}>
+              <option value="">None</option>
+              {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div>
             <div style={S.lbl}>Date</div>
             <input style={S.inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} />
           </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
           <div>
             <div style={S.lbl}>Repeats</div>
             <select style={S.sel} value={form.recurrence} onChange={e => set('recurrence', e.target.value)}>
@@ -285,15 +311,15 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
               <option value="monthly">Monthly</option>
             </select>
           </div>
-          {form.recurrence !== 'once' && (
-            <div>
-              <div style={S.lbl}>End date (opt.)</div>
-              <input style={S.inp} type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
-            </div>
-          )}
         </div>
+        {form.recurrence !== 'once' && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={S.lbl}>End date (opt.)</div>
+            <input style={S.inp} type="date" value={form.end_date} onChange={e => set('end_date', e.target.value)} />
+          </div>
+        )}
         {error && <div style={{ fontSize: 11, color: C.red, marginBottom: 8 }}>{error}</div>}
-        <button style={{ ...S.btn(form.type === 'income' ? C.green : C.orange), width: '100%' }} onClick={save} disabled={saving}>
+        <button style={{ ...S.btn(form.type === 'income' ? C.green : C.orange), width: '100%', marginTop: 6 }} onClick={save} disabled={saving}>
           {saving ? 'Saving…' : form.type === 'income' ? 'Add Income' : form.type === 'transfer' ? 'Add Transfer' : 'Add Expense'}
         </button>
       </div>
@@ -301,8 +327,116 @@ function AddTxModal({ bookId, accounts, onSave, onClose }) {
   )
 }
 
-// ─── OVERVIEW TAB ─────────────────────────────────────────────────────────────
-function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles }) {
+// ─── EDIT TRANSACTION SHEET ───────────────────────────────────────────────────
+function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
+  const isRecurring = tx.recurrence && tx.recurrence !== 'once'
+  const isSkipped = override?.action === 'skipped'
+  const isModified = override?.action === 'modified'
+  const currentAmt = isModified ? (parseFloat(override.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
+  const [editAmt, setEditAmt] = useState(String(currentAmt.toFixed(2)))
+  const [showDelete, setShowDelete] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function saveOnce() {
+    const parsed = parseFloat(editAmt)
+    if (isNaN(parsed) || parsed <= 0) return
+    setSaving(true)
+    const rec = { transaction_id: tx.id, instance_date: date, action: 'modified', modified_amount: parsed }
+    if (override) await supabase.from('cashflow_overrides').update(rec).eq('id', override.id)
+    else await supabase.from('cashflow_overrides').insert(rec)
+    setSaving(false)
+    onRefresh(); onClose()
+  }
+
+  async function saveAllFuture() {
+    const parsed = parseFloat(editAmt)
+    if (isNaN(parsed) || parsed <= 0) return
+    setSaving(true)
+    await supabase.from('cashflow_transactions').update({ amount: parsed }).eq('id', tx.id)
+    setSaving(false)
+    onRefresh(); onClose()
+  }
+
+  async function toggleSkip() {
+    setSaving(true)
+    if (isSkipped && override) {
+      await supabase.from('cashflow_overrides').delete().eq('id', override.id)
+    } else {
+      const rec = { transaction_id: tx.id, instance_date: date, action: 'skipped' }
+      if (override) await supabase.from('cashflow_overrides').update(rec).eq('id', override.id)
+      else await supabase.from('cashflow_overrides').insert(rec)
+    }
+    setSaving(false)
+    onRefresh(); onClose()
+  }
+
+  async function deleteTx() {
+    setSaving(true)
+    await supabase.from('cashflow_overrides').delete().eq('transaction_id', tx.id)
+    await supabase.from('cashflow_transactions').delete().eq('id', tx.id)
+    setSaving(false)
+    onRefresh(); onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }} onClick={onClose}>
+      <div style={{ background: C.surface, borderRadius: '20px 20px 0 0', padding: '20px 18px 36px', maxHeight: '80vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{tx.label}</div>
+            <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>
+              {fmtDateLabel(date)} · {tx.account}{tx.category ? ` · ${tx.category}` : ''}
+              {isRecurring && <span style={{ color: 'var(--c-info-67)' }}> · ↻ {tx.recurrence}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer', flexShrink: 0 }}>×</button>
+        </div>
+
+        <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>Edit amount</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
+          <input
+            style={{ ...S.inp, flex: 1, fontSize: 22, fontWeight: 700, textAlign: 'center' }}
+            type="number" step="0.01"
+            value={editAmt}
+            onChange={e => setEditAmt(e.target.value)}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button style={{ ...S.btn(), flex: 1 }} onClick={saveOnce} disabled={saving}>This time</button>
+          {isRecurring && (
+            <button style={{ ...S.btn(C.orange), flex: 1 }} onClick={saveAllFuture} disabled={saving}>All future</button>
+          )}
+        </div>
+
+        <button
+          onClick={toggleSkip} disabled={saving}
+          style={{ width: '100%', background: isSkipped ? 'rgba(243,193,120,0.12)' : C.surfaceHigh, border: `1px solid ${isSkipped ? C.orange : C.border}`, borderRadius: 8, padding: '10px 0', color: isSkipped ? C.orange : C.textMid, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', marginBottom: 24 }}
+        >
+          {isSkipped ? '↩ Unskip this occurrence' : '⊘ Skip this occurrence'}
+        </button>
+
+        {!showDelete ? (
+          <button onClick={() => setShowDelete(true)} style={{ background: 'none', border: 'none', color: C.red, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', display: 'block', margin: '0 auto' }}>
+            Delete this transaction…
+          </button>
+        ) : (
+          <div style={{ background: C.redBg, border: `1px solid ${C.red}`, borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 13, color: C.red, fontWeight: 600, marginBottom: 8 }}>Delete "{tx.label}" and all its history?</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ ...S.btn(C.red), flex: 1 }} onClick={deleteTx} disabled={saving}>
+                {saving ? 'Deleting…' : 'Yes, delete'}
+              </button>
+              <button style={{ ...S.btn(C.surfaceHigh, true) }} onClick={() => setShowDelete(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── OVERVIEW TAB (NOW) ────────────────────────────────────────────────────────
+function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles, onGoToAccounts }) {
   const today = todayStr()
   const [envelopes, setEnvelopes] = useState([])
 
@@ -406,7 +540,12 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
       {/* Accounts */}
       <div style={S.card}>
         <div style={{ ...S.lbl, marginBottom: 8 }}>Accounts</div>
-        {accounts.length === 0 && <div style={{ fontSize: 12, color: C.textLow }}>No accounts yet</div>}
+        {accounts.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '12px 0 4px' }}>
+            <div style={{ fontSize: 12, color: C.textLow, marginBottom: 10 }}>No accounts yet</div>
+            <button onClick={onGoToAccounts} style={{ ...S.btn(), fontSize: 12, padding: '8px 16px' }}>Add your first account →</button>
+          </div>
+        )}
         {accounts.map((a, i) => (
           <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < accounts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
             <div>
@@ -422,6 +561,33 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
           </div>
         ))}
       </div>
+
+      {/* Today's activity */}
+      {(() => {
+        const todayItems = transactions.flatMap(tx => {
+          if (!expandTx(tx, today, today).length) return []
+          const ov = getOverride(overrides, tx.id, today)
+          if (ov?.action === 'skipped') return []
+          const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
+          return [{ tx, amt, approved: ov?.action === 'approved' }]
+        })
+        return todayItems.length > 0 && (
+          <div style={S.card}>
+            <div style={{ ...S.lbl, marginBottom: 8 }}>Today</div>
+            {todayItems.map(({ tx, amt, approved }, i) => (
+              <div key={tx.id} style={{ ...S.row, borderBottom: i < todayItems.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: approved ? 700 : 500 }}>{tx.label}</div>
+                  <div style={{ fontSize: 10, color: C.textLow }}>{tx.account}</div>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: tx.type === 'income' ? C.green : C.red }}>
+                  {tx.type === 'income' ? '+' : '−'}{fmt(amt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* 14-day calendar grid */}
       <div style={S.card}>
@@ -502,247 +668,181 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   )
 }
 
-// ─── AGENDA TAB ───────────────────────────────────────────────────────────────
-function AgendaTab({ accounts, transactions, overrides, onOverrideChange }) {
+// ─── AHEAD TAB (UPCOMING TIMELINE) ────────────────────────────────────────────
+function AheadTab({ accounts, transactions, overrides, onOverrideChange, bookId, categories, onEditTx }) {
   const today = todayStr()
-  const pastStart = new Date(); pastStart.setDate(pastStart.getDate() - 14)
-  const futureEnd = new Date(); futureEnd.setDate(futureEnd.getDate() + 60)
-  const startStr = pastStart.toISOString().slice(0, 10)
-  const endStr = futureEnd.toISOString().slice(0, 10)
+  const end30 = new Date(); end30.setDate(end30.getDate() + 30)
+  const endStr = end30.toISOString().slice(0, 10)
 
-  const [filterAccount, setFilterAccount] = useState('')
-  const [filterType, setFilterType] = useState('')
-  const [editKey, setEditKey] = useState(null)
-  const [editAmt, setEditAmt] = useState('')
+  const [cycle, setCycle] = useState(null)
+  const [editSheet, setEditSheet] = useState(null) // { tx, date, override }
 
-  const allInstances = useMemo(() => {
+  useEffect(() => {
+    supabase.from('pay_cycles').select('*').eq('book_id', bookId)
+      .lte('start_date', today).gte('end_date', today).limit(1)
+      .then(({ data }) => setCycle(data?.[0] || null))
+  }, [bookId, today])
+
+  const totalCash = accounts.filter(a => a.type !== 'credit' && !a.track_only)
+    .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
+
+  const upcoming = useMemo(() => {
     const items = []
     for (const tx of transactions) {
-      if (filterAccount && tx.account !== filterAccount) continue
-      if (filterType && tx.type !== filterType) continue
-      const dates = expandTx(tx, startStr, endStr)
-      for (const d of dates) {
+      for (const d of expandTx(tx, today, endStr)) {
         const ov = getOverride(overrides, tx.id, d)
         items.push({ tx, date: d, override: ov, state: ov?.action || 'projected' })
       }
     }
     return items.sort((a, b) => a.date.localeCompare(b.date))
-  }, [transactions, overrides, startStr, endStr, filterAccount, filterType])
+  }, [transactions, overrides, today, endStr])
 
-  // Compute running balance starting from today's total cash
-  const todayBalance = accounts
-    .filter(a => a.type !== 'credit' && !a.track_only)
-    .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
-
-  const instancesWithBalance = useMemo(() => {
-    let running = todayBalance
-    // First, adjust running back to start: subtract projected future, add past projected
-    // Simpler: just annotate each with a projected running balance from today forward
-    let bal = todayBalance
-    const todayIdx = allInstances.findIndex(i => i.date >= today)
-
-    // compute past items that reduce today's balance (we can't go back, so just show balance from today forward)
-    return allInstances.map((inst, idx) => {
-      const amt = inst.override?.action === 'modified'
-        ? (parseFloat(inst.override.modified_amount) || 0)
+  const upcomingWithBal = useMemo(() => {
+    let bal = totalCash
+    return upcoming.map(inst => {
+      const amt = inst.state === 'modified'
+        ? (parseFloat(inst.override?.modified_amount) || 0)
         : (parseFloat(inst.tx.amount) || 0)
-      const signed = inst.tx.type === 'income' ? amt : -amt
-      let balAfter = null
-      if (inst.date >= today && inst.state !== 'skipped') {
-        bal += signed
-        balAfter = bal
-      }
-      return { ...inst, balAfter }
+      if (inst.state !== 'skipped') bal += inst.tx.type === 'income' ? amt : -amt
+      return { ...inst, balAfter: bal, amt }
     })
-  }, [allInstances, todayBalance, today])
+  }, [upcoming, totalCash])
 
-  // Group by date
   const byDate = useMemo(() => {
     const map = new Map()
-    for (const inst of instancesWithBalance) {
+    for (const inst of upcomingWithBal) {
       if (!map.has(inst.date)) map.set(inst.date, [])
       map.get(inst.date).push(inst)
     }
     return Array.from(map.entries())
-  }, [instancesWithBalance])
+  }, [upcomingWithBal])
 
-  async function quickApprove(tx, date, currentState) {
-    const newAction = currentState === 'approved' ? null : 'approved'
+  const lowBalDates = useMemo(() =>
+    new Set(upcomingWithBal.filter(i => i.balAfter < 200).map(i => i.date)),
+  [upcomingWithBal])
+
+  async function quickApprove(tx, date, state) {
+    const newAction = state === 'approved' ? null : 'approved'
     const ov = getOverride(overrides, tx.id, date)
-    if (newAction === null && ov) {
-      await supabase.from('cashflow_overrides').delete().eq('id', ov.id)
-    } else {
-      const record = { transaction_id: tx.id, instance_date: date, action: newAction }
-      if (ov) {
-        await supabase.from('cashflow_overrides').update(record).eq('id', ov.id)
-      } else {
-        await supabase.from('cashflow_overrides').insert(record)
-      }
+    if (newAction === null && ov) await supabase.from('cashflow_overrides').delete().eq('id', ov.id)
+    else {
+      const rec = { transaction_id: tx.id, instance_date: date, action: newAction }
+      if (ov) await supabase.from('cashflow_overrides').update(rec).eq('id', ov.id)
+      else await supabase.from('cashflow_overrides').insert(rec)
     }
     onOverrideChange()
   }
 
-  async function quickSkip(tx, date, currentState) {
-    const newAction = currentState === 'skipped' ? null : 'skipped'
+  async function quickSkip(tx, date, state) {
+    const newAction = state === 'skipped' ? null : 'skipped'
     const ov = getOverride(overrides, tx.id, date)
-    if (newAction === null && ov) {
-      await supabase.from('cashflow_overrides').delete().eq('id', ov.id)
-    } else {
-      const record = { transaction_id: tx.id, instance_date: date, action: newAction }
-      if (ov) {
-        await supabase.from('cashflow_overrides').update(record).eq('id', ov.id)
-      } else {
-        await supabase.from('cashflow_overrides').insert(record)
-      }
+    if (newAction === null && ov) await supabase.from('cashflow_overrides').delete().eq('id', ov.id)
+    else {
+      const rec = { transaction_id: tx.id, instance_date: date, action: newAction }
+      if (ov) await supabase.from('cashflow_overrides').update(rec).eq('id', ov.id)
+      else await supabase.from('cashflow_overrides').insert(rec)
     }
-    onOverrideChange()
-  }
-
-  async function updateOnce(tx, date, amt) {
-    const parsed = parseFloat(amt)
-    if (isNaN(parsed) || parsed <= 0) return
-    const ov = getOverride(overrides, tx.id, date)
-    const rec = { transaction_id: tx.id, instance_date: date, action: 'modified', modified_amount: parsed }
-    if (ov) await supabase.from('cashflow_overrides').update(rec).eq('id', ov.id)
-    else await supabase.from('cashflow_overrides').insert(rec)
-    setEditKey(null)
-    onOverrideChange()
-  }
-
-  async function updateAllFuture(tx, amt) {
-    const parsed = parseFloat(amt)
-    if (isNaN(parsed) || parsed <= 0) return
-    await supabase.from('cashflow_transactions').update({ amount: parsed }).eq('id', tx.id)
-    setEditKey(null)
     onOverrideChange()
   }
 
   return (
     <div>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <select style={{ ...S.sel, flex: 1 }} value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
-          <option value="">All accounts</option>
-          {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-        </select>
-        <select style={{ ...S.sel, flex: 1 }} value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="">All types</option>
-          <option value="income">Income</option>
-          <option value="expense">Expenses</option>
-          <option value="transfer">Transfers</option>
-        </select>
-      </div>
+      {/* Pay cycle countdown */}
+      {cycle && (() => {
+        const end = new Date(cycle.end_date + 'T00:00:00')
+        const now = new Date(); now.setHours(0, 0, 0, 0)
+        const daysLeft = Math.max(0, Math.round((end - now) / 86400000) + 1)
+        const start = new Date(cycle.start_date + 'T00:00:00')
+        const total = Math.round((end - start) / 86400000) + 1
+        const pct = Math.min(100, ((total - daysLeft) / total) * 100)
+        return (
+          <div style={{ ...S.card, background: C.surfaceHigh, marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2 }}>Pay cycle</div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>
+                  {new Date(cycle.start_date + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                  {' – '}
+                  {new Date(cycle.end_date + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: daysLeft <= 3 ? C.orange : C.text, lineHeight: 1 }}>{daysLeft}</div>
+                <div style={{ fontSize: 10, color: C.textLow }}>days left</div>
+              </div>
+            </div>
+            <div style={{ height: 4, background: C.border, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: C.purple, borderRadius: 2 }} />
+            </div>
+          </div>
+        )
+      })()}
 
-      {allInstances.length === 0 && (
-        <div style={{ textAlign: 'center', color: C.textLow, padding: '40px 0', fontSize: 13 }}>
-          No transactions in this window
+      {/* Timeline */}
+      {byDate.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: C.textLow, fontSize: 13 }}>
+          No upcoming transactions in the next 30 days.<br />
+          <span style={{ fontSize: 11 }}>Use the + button to add income or bills.</span>
         </div>
       )}
-
       {byDate.map(([date, insts]) => {
         const isToday = date === today
-        const isPast = date < today
+        const endBal = insts[insts.length - 1]?.balAfter
+        const isLow = lowBalDates.has(date)
         return (
           <div key={date}>
-            {/* Date header */}
-            <div style={{ fontSize: 10, color: isToday ? C.purple : isPast ? C.textLow : C.textMid, textTransform: 'uppercase', letterSpacing: 2, padding: '12px 0 5px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 2, padding: '12px 0 5px', fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: isToday ? C.purple : C.textMid }}>
               <span>{isToday ? '● TODAY' : fmtDateLabel(date)}</span>
-              {insts[insts.length - 1]?.balAfter != null && (
-                <span style={{ color: insts[insts.length - 1].balAfter >= 0 ? C.green : C.red, fontSize: 11, fontWeight: 700 }}>
-                  {fmtAmt(insts[insts.length - 1].balAfter)}
+              {endBal != null && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: isLow ? C.orange : endBal >= 0 ? C.green : C.red }}>
+                  {isLow && '⚠ '}{fmtAmt(endBal)}
                 </span>
               )}
             </div>
-
-            {/* Instances */}
             {insts.map((inst, i) => {
-              const key = `${inst.tx.id}:${inst.date}`
               const isIncome = inst.tx.type === 'income'
               const isApproved = inst.state === 'approved'
               const isSkipped = inst.state === 'skipped'
-              const isModified = inst.state === 'modified'
-              const amt = isModified ? (inst.override?.modified_amount ?? inst.tx.amount) : inst.tx.amount
-              const isEditing = editKey === key
+              const isPast = date < today
               return (
-                <div key={key}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: i < insts.length - 1 && !isEditing ? `1px solid ${C.border}` : 'none', opacity: isSkipped ? 0.4 : 1 }}>
-                    {/* Approve toggle */}
-                    <button
-                      onClick={() => quickApprove(inst.tx, inst.date, inst.state)}
-                      style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved || isModified ? C.green : isPast ? 'var(--c-warn-50)' : C.border}`, background: isApproved || isModified ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
-                    >
-                      {(isApproved || isModified) && <span style={{ color: 'var(--c-btn-text)', fontWeight: 900 }}>✓</span>}
-                    </button>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: isApproved ? 700 : 500, fontStyle: inst.state === 'projected' ? 'italic' : 'normal', color: isSkipped ? C.textLow : C.text, textDecoration: isSkipped ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {inst.tx.label}
-                      </div>
-                      <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>
-                        {inst.tx.account}
-                        {inst.tx.recurrence !== 'once' && <span style={{ color: 'var(--c-info-67)' }}> · ↻ {inst.tx.recurrence}</span>}
-                      </div>
+                <div key={`${inst.tx.id}:${inst.date}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: i < insts.length - 1 ? `1px solid ${C.border}` : 'none', opacity: isSkipped ? 0.4 : 1 }}>
+                  <button
+                    onClick={() => quickApprove(inst.tx, inst.date, inst.state)}
+                    style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isApproved ? C.green : isPast ? 'var(--c-warn-50)' : C.border}`, background: isApproved ? C.green : 'transparent', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
+                  >
+                    {isApproved && <span style={{ color: 'var(--c-btn-text)', fontWeight: 900 }}>✓</span>}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setEditSheet({ tx: inst.tx, date: inst.date, override: inst.override })}>
+                    <div style={{ fontSize: 13, fontWeight: isApproved ? 700 : 500, fontStyle: inst.state === 'projected' ? 'italic' : 'normal', color: isSkipped ? C.textLow : C.text, textDecoration: isSkipped ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {inst.tx.label}
                     </div>
-
-                    <button
-                      onClick={() => { setEditKey(key); setEditAmt(String(amt)) }}
-                      style={{ background: 'none', border: 'none', color: isEditing ? C.purple : C.textLow, cursor: 'pointer', fontSize: 12, padding: '0 2px', flexShrink: 0 }}
-                      title="Edit amount"
-                    >✎</button>
-
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red }}>
-                        {isIncome ? '+' : '-'}{fmt(amt)}
-                      </div>
-                    </div>
-
-                    {/* Skip */}
-                    <button
-                      onClick={() => quickSkip(inst.tx, inst.date, inst.state)}
-                      style={{ background: 'none', border: 'none', color: isSkipped ? C.orange : C.textLow, cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}
-                      title={isSkipped ? 'Unskip' : 'Skip'}
-                    >
-                      {isSkipped ? '↩' : '⊘'}
-                    </button>
+                    <div style={{ fontSize: 10, color: C.textLow }}>{inst.tx.account}{inst.tx.recurrence !== 'once' ? ` · ↻ ${inst.tx.recurrence}` : ''}</div>
                   </div>
-
-                  {/* Inline amount editor */}
-                  {isEditing && (
-                    <div style={{ background: C.surfaceHigh, borderRadius: 8, padding: '10px 12px', marginBottom: 6, borderBottom: i < insts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                      <div style={{ fontSize: 10, color: C.textLow, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Edit amount · {inst.tx.label}</div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <input
-                          style={{ ...S.inp, flex: '1 1 80px', padding: '7px 10px', fontSize: 14, minWidth: 80 }}
-                          type="number"
-                          step="0.01"
-                          value={editAmt}
-                          onChange={e => setEditAmt(e.target.value)}
-                          autoFocus
-                        />
-                        <button style={{ ...S.btn(), fontSize: 11, padding: '7px 10px', whiteSpace: 'nowrap' }}
-                          onClick={() => updateOnce(inst.tx, inst.date, editAmt)}>
-                          This time
-                        </button>
-                        {inst.tx.recurrence !== 'once' && (
-                          <button style={{ ...S.btn(C.orange), fontSize: 11, padding: '7px 10px', whiteSpace: 'nowrap' }}
-                            onClick={() => updateAllFuture(inst.tx, editAmt)}>
-                            All future
-                          </button>
-                        )}
-                        <button style={{ background: 'none', border: 'none', color: C.textLow, cursor: 'pointer', padding: '0 4px', fontSize: 18, flexShrink: 0 }}
-                          onClick={() => setEditKey(null)}>×</button>
-                      </div>
-                    </div>
-                  )}
+                  <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red, flexShrink: 0 }}>
+                    {isIncome ? '+' : '−'}{fmt(inst.amt)}
+                  </div>
+                  <button onClick={() => quickSkip(inst.tx, inst.date, inst.state)} style={{ background: 'none', border: 'none', color: isSkipped ? C.orange : C.textLow, cursor: 'pointer', fontSize: 13, padding: '0 2px', flexShrink: 0 }}>
+                    {isSkipped ? '↩' : '⊘'}
+                  </button>
                 </div>
               )
             })}
           </div>
         )
       })}
+
+      {editSheet && (
+        <EditTxSheet
+          tx={editSheet.tx} date={editSheet.date} override={editSheet.override}
+          categories={categories}
+          onClose={() => setEditSheet(null)}
+          onRefresh={onOverrideChange}
+        />
+      )}
     </div>
   )
 }
+
 
 // ─── CALENDAR TAB ─────────────────────────────────────────────────────────────
 function CalendarTab({ accounts, transactions, overrides }) {
@@ -998,81 +1098,111 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
   )
 }
 
-// ─── TRANSACTIONS MANAGEMENT TAB ──────────────────────────────────────────────
-function TransactionsTab({ transactions, bookId, onRefresh }) {
-  const [showAdd, setShowAdd] = useState(false)
-  const [accounts, setAccounts] = useState([])
-  const [filter, setFilter] = useState('')
+// ─── TRANSACTIONS TAB (FULL HISTORY) ─────────────────────────────────────────
+function TransactionsTab({ accounts, transactions, overrides, bookId, onRefresh, categories }) {
+  const today = todayStr()
+  const past90 = new Date(); past90.setDate(past90.getDate() - 90)
+  const future30 = new Date(); future30.setDate(future30.getDate() + 30)
+  const startStr = past90.toISOString().slice(0, 10)
+  const endStr = future30.toISOString().slice(0, 10)
 
-  useEffect(() => {
-    supabase.from('cashflow_accounts').select('id,name').eq('book_id', bookId)
-      .then(({ data }) => setAccounts(data || []))
-  }, [bookId])
+  const [filterType, setFilterType] = useState('')
+  const [filterAccount, setFilterAccount] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [sortBy, setSortBy] = useState('date') // 'date' | 'amount'
+  const [editSheet, setEditSheet] = useState(null)
 
-  async function deleteTx(id) {
-    if (!confirm('Delete this transaction and all its overrides?')) return
-    await supabase.from('cashflow_overrides').delete().eq('transaction_id', id)
-    await supabase.from('cashflow_transactions').delete().eq('id', id)
-    onRefresh()
-  }
+  const catOptions = categories?.length ? categories : DEFAULT_CATEGORIES.map(n => ({ name: n }))
 
-  const filtered = filter
-    ? transactions.filter(t => t.label.toLowerCase().includes(filter.toLowerCase()) || t.account?.toLowerCase().includes(filter.toLowerCase()))
-    : transactions
-
-  const sorted = [...filtered].sort((a, b) => a.label.localeCompare(b.label))
+  const instances = useMemo(() => {
+    const items = []
+    for (const tx of transactions) {
+      if (filterType && tx.type !== filterType) continue
+      if (filterAccount && tx.account !== filterAccount) continue
+      if (filterCategory && tx.category !== filterCategory) continue
+      for (const d of expandTx(tx, startStr, endStr)) {
+        const ov = getOverride(overrides, tx.id, d)
+        const amt = ov?.action === 'modified'
+          ? (parseFloat(ov.modified_amount) || 0)
+          : (parseFloat(tx.amount) || 0)
+        items.push({ tx, date: d, override: ov, state: ov?.action || 'projected', amt })
+      }
+    }
+    if (sortBy === 'amount') return items.sort((a, b) => b.amt - a.amt)
+    return items.sort((a, b) => b.date.localeCompare(a.date))
+  }, [transactions, overrides, filterType, filterAccount, filterCategory, sortBy, startStr, endStr])
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <input
-          style={{ ...S.inp, flex: 1 }}
-          placeholder="Search transactions…"
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-        />
-        <button style={S.btn()} onClick={() => setShowAdd(true)}>+ Add</button>
+      {/* Filter row */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
+        {[['', 'All'], ['income', 'Income'], ['expense', 'Bills']].map(([v, label]) => (
+          <button key={v} onClick={() => setFilterType(v)}
+            style={{ flexShrink: 0, background: filterType === v ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 20, padding: '6px 14px', color: filterType === v ? 'var(--c-btn-text)' : C.textMid, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: filterType === v ? 700 : 400 }}>
+            {label}
+          </button>
+        ))}
+        <select style={{ ...S.sel, flexShrink: 0, minWidth: 100, fontSize: 12, padding: '5px 10px' }} value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
+          <option value="">All accounts</option>
+          {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
+        </select>
+        <select style={{ ...S.sel, flexShrink: 0, minWidth: 110, fontSize: 12, padding: '5px 10px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">All categories</option>
+          {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
+        </select>
       </div>
 
-      {showAdd && (
-        <AddTxModal
-          bookId={bookId}
-          accounts={accounts}
-          onSave={() => { setShowAdd(false); onRefresh() }}
-          onClose={() => setShowAdd(false)}
+      {/* Sort row */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center' }}>
+        <span style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1.5 }}>Sort</span>
+        {[['date', 'Date'], ['amount', 'Amount']].map(([v, label]) => (
+          <button key={v} onClick={() => setSortBy(v)}
+            style={{ background: sortBy === v ? C.surfaceHigh : 'none', border: `1px solid ${sortBy === v ? C.purple : C.border}`, borderRadius: 6, padding: '4px 10px', color: sortBy === v ? C.purple : C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {instances.length === 0 && (
+        <div style={{ textAlign: 'center', color: C.textLow, padding: '40px 0', fontSize: 13 }}>
+          No transactions match these filters
+        </div>
+      )}
+
+      {instances.map((inst, i) => {
+        const isIncome = inst.tx.type === 'income'
+        const isSkipped = inst.state === 'skipped'
+        const isApproved = inst.state === 'approved'
+        const isPast = inst.date < today
+        return (
+          <div key={`${inst.tx.id}:${inst.date}`}
+            onClick={() => setEditSheet({ tx: inst.tx, date: inst.date, override: inst.override })}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: i < instances.length - 1 ? `1px solid ${C.border}` : 'none', cursor: 'pointer', opacity: isSkipped ? 0.45 : 1 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: isApproved ? C.green : inst.state === 'projected' ? (isPast ? C.orange : C.border) : C.green, flexShrink: 0, marginTop: 1 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, textDecoration: isSkipped ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {inst.tx.label}
+              </div>
+              <div style={{ fontSize: 10, color: C.textLow, marginTop: 1 }}>
+                {fmtDateLabel(inst.date)}{inst.tx.account ? ` · ${inst.tx.account}` : ''}{inst.tx.category ? ` · ${inst.tx.category}` : ''}
+                {inst.tx.recurrence !== 'once' && <span style={{ color: 'var(--c-info-67)' }}> · ↻</span>}
+              </div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: isIncome ? C.green : C.red, flexShrink: 0 }}>
+              {isIncome ? '+' : '−'}{fmt(inst.amt)}
+            </div>
+          </div>
+        )
+      })}
+
+      {editSheet && (
+        <EditTxSheet
+          tx={editSheet.tx} date={editSheet.date} override={editSheet.override}
+          categories={categories}
+          onClose={() => setEditSheet(null)}
+          onRefresh={onRefresh}
         />
       )}
-
-      {sorted.length === 0 && (
-        <div style={{ textAlign: 'center', color: C.textLow, padding: '30px 0', fontSize: 13 }}>
-          No transactions yet
-        </div>
-      )}
-
-      {sorted.map((tx, i) => (
-        <div key={tx.id} style={{ ...S.row, borderBottom: i < sorted.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 2 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>{tx.label}</span>
-              <RecurBadge r={tx.recurrence} />
-              {tx.type === 'income'
-                ? <span style={{ fontSize: 9, background: 'var(--c-positive-13)', color: C.green, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>INCOME</span>
-                : <span style={{ fontSize: 9, background: 'var(--c-negative-13)', color: C.red, borderRadius: 4, padding: '2px 5px', letterSpacing: 1 }}>EXPENSE</span>
-              }
-            </div>
-            <div style={{ fontSize: 10, color: C.textLow }}>
-              {tx.account} · {tx.recurrence === 'once' ? fmtMonthDay(tx.date) : `from ${fmtMonthDay(tx.date)}`}
-              {tx.end_date ? ` → ${fmtMonthDay(tx.end_date)}` : ''}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: tx.type === 'income' ? C.green : C.red }}>
-              {tx.type === 'income' ? '+' : '-'}{fmt(tx.amount)}
-            </span>
-            <button onClick={() => deleteTx(tx.id)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -1461,67 +1591,87 @@ function ThemePicker({ current, onClose }) {
   )
 }
 
-// ─── BURGER MENU ──────────────────────────────────────────────────────────────
-const BURGER_NAV = [
-  { id: 'cycles',   label: 'Cycles',   icon: '⊙', desc: 'Plan spending per pay period using budget envelopes' },
-  { id: 'agenda',   label: 'Agenda',   icon: '≡', desc: 'Timeline of all transactions — approve, skip, or edit amounts' },
-  { id: 'calendar', label: 'Calendar', icon: '▦', desc: 'Monthly cash flow with projected day-by-day balance' },
-]
-
-const ALL_TAB_INFO = [
-  { label: 'Home',     icon: '⌂', desc: 'Your financial snapshot. Safe to spend = cash balance minus upcoming bills until your next income. Includes a 14-day calendar grid, tight envelopes at ≥90% usage, and quick account access.' },
-  { label: 'Goals',    icon: '◈', desc: 'Create savings goals with a target amount and optional deadline. Log contributions and watch progress bars fill up.' },
-  { label: 'Accounts', icon: '◎', desc: 'Add and rename bank accounts. Tap Reconcile to sync your tracked balance with your actual bank. Mark accounts as tracking-only to exclude them from your spending totals.' },
-  { label: 'Manage',   icon: '✦', desc: 'Add, search, and delete transactions. Set up recurring transactions (weekly, biweekly, monthly) with optional end dates.' },
-  { label: 'Cycles',   icon: '⊙', desc: 'Budget by pay period. Each cycle has envelopes (categories) with set allocations. Track spending per envelope and reassign funds between them.' },
-  { label: 'Agenda',   icon: '≡', desc: 'Scrollable timeline — past 14 days and next 60 days. Tap ✓ to confirm actuals, ⊘ to skip, or ✎ to edit an amount just this time or for all future occurrences.' },
-  { label: 'Calendar', icon: '▦', desc: 'Month-by-month view showing net cash flow per day and a projected running balance from today forward.' },
-]
-
-function BurgerMenu({ activeTab, onNavigate, onClose }) {
-  const [showInfo, setShowInfo] = useState(false)
+// ─── STACK MENU ───────────────────────────────────────────────────────────────
+function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onSignOut, onClose }) {
+  const navItems = [
+    { id: 'cycles',   icon: '⊙', label: 'Cycles',   desc: 'Plan spending with budget envelopes per pay period' },
+    { id: 'goals',    icon: '◈', label: 'Goals',    desc: 'Named savings targets with progress tracking' },
+    { id: 'accounts', icon: '◎', label: 'Accounts', desc: 'Manage accounts and reconcile balances' },
+  ]
   return (
     <div style={sheetStyle} onClick={onClose}>
-      <div style={{ ...sheetInner, maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+      <div style={{ ...sheetInner, maxHeight: '80vh' }} onClick={e => e.stopPropagation()}>
         <div style={{ ...sheetHeader }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>{showInfo ? 'How it works' : 'More'}</div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              onClick={() => setShowInfo(v => !v)}
-              style={{ background: showInfo ? C.surfaceHigh : 'none', border: `1px solid ${C.border}`, borderRadius: 8, padding: '5px 12px', color: showInfo ? C.purple : C.textMid, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}
-            >
-              {showInfo ? '← Back' : 'ℹ How it works'}
-            </button>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
-          </div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>More</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
-        <div style={{ padding: '14px 16px 32px', overflowY: 'auto' }}>
-          {showInfo ? (
-            ALL_TAB_INFO.map(item => (
-              <div key={item.label} style={{ display: 'flex', gap: 14, padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 22, flexShrink: 0, width: 28, textAlign: 'center', paddingTop: 1 }}>{item.icon}</div>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: C.text }}>{item.label}</div>
-                  <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.55 }}>{item.desc}</div>
-                </div>
+        <div style={{ padding: '12px 16px', overflowY: 'auto', flex: 1 }}>
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => { onNavigate(item.id); onClose() }}
+              style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: activeTab === item.id ? C.surfaceHigh : C.surface, border: `1px solid ${activeTab === item.id ? C.purple : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+              <span style={{ fontSize: 22, width: 28, textAlign: 'center', flexShrink: 0 }}>{item.icon}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: activeTab === item.id ? C.purple : C.text }}>{item.label}</div>
+                <div style={{ fontSize: 11, color: C.textMid, marginTop: 2 }}>{item.desc}</div>
               </div>
-            ))
-          ) : (
-            BURGER_NAV.map(item => (
-              <button
-                key={item.id}
-                onClick={() => { onNavigate(item.id); onClose() }}
-                style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: activeTab === item.id ? C.surfaceHigh : C.surface, border: `1px solid ${activeTab === item.id ? C.purple : C.border}`, borderRadius: 12, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}
-              >
-                <span style={{ fontSize: 24, flexShrink: 0, width: 28, textAlign: 'center' }}>{item.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: activeTab === item.id ? C.purple : C.text }}>{item.label}</div>
-                  <div style={{ fontSize: 11, color: C.textMid, marginTop: 3 }}>{item.desc}</div>
-                </div>
-                <span style={{ color: C.textLow, fontSize: 18 }}>›</span>
-              </button>
-            ))
-          )}
+              <span style={{ color: C.textLow, fontSize: 18 }}>›</span>
+            </button>
+          ))}
+
+          <div style={{ borderTop: `1px solid ${C.border}`, margin: '8px 0 12px' }} />
+
+          {[
+            { label: '🔔 Notifications', fn: () => { onShowNotif(); onClose() } },
+            { label: '👥 Share Book',     fn: () => { onShowShare(); onClose() } },
+          ].map(({ label, fn }) => (
+            <button key={label} onClick={fn}
+              style={{ display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '13px 4px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', borderBottom: `1px solid ${C.border}` }}>
+              {label}
+            </button>
+          ))}
+          <button onClick={onSignOut}
+            style={{ display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '13px 4px', color: C.red, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', marginBottom: 8 }}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── HELP SHEET ───────────────────────────────────────────────────────────────
+const HELP_ITEMS = [
+  { icon: '⌂', title: 'Now',          body: "This is your live financial picture. Safe to Spend tells you what's actually available after committed bills — it's not your bank balance, it's your real number." },
+  { icon: '→', title: 'Ahead',        body: "What's coming up in the next 30 days. Bills are shown as they fall due. Tap ✓ to confirm something happened, ⊘ to skip it, or the row to edit the amount." },
+  { icon: '≡', title: 'History',      body: "Your full transaction record — past and projected. Filter by type or category. Tap any row to edit the amount or delete the transaction." },
+  { icon: '⊙', title: 'Pay Cycles',   body: "Each paycheck is a cycle. You allocate money to envelopes before you spend it. Unspent rolls forward — no resets, no shame." },
+  { icon: '□', title: 'Envelopes',    body: "Buckets for variable spending — groceries, fun money, etc. You decide how much goes in each one. When an envelope runs low, you can reassign from another." },
+  { icon: '◈', title: 'Goals',        body: "Give a name and a target to something you're saving for. Contribute each cycle. The progress bar moves when you do." },
+  { icon: '↺', title: 'Reconcile',    body: "When your app balance drifts from your actual bank balance, reconcile. The app walks you through what happened — you confirm or adjust. This keeps projections accurate." },
+  { icon: 'i', title: 'Projected vs Confirmed', body: "Italic = hasn't happened yet. Bold = confirmed. Strikethrough = skipped. The app tracks the difference so you always know what's real vs. what's expected." },
+]
+
+function HelpSheet({ onClose }) {
+  return (
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={{ ...sheetInner, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+        <div style={{ ...sheetHeader }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>How Lighthouse Trail works</div>
+            <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>A calm, honest look at your money</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '12px 18px 32px', overflowY: 'auto', flex: 1 }}>
+          {HELP_ITEMS.map(item => (
+            <div key={item.title} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 20, flexShrink: 0, width: 28, textAlign: 'center', paddingTop: 2, color: C.purple }}>{item.icon}</div>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{item.title}</div>
+                <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.65 }}>{item.body}</div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1529,13 +1679,12 @@ function BurgerMenu({ activeTab, onNavigate, onClose }) {
 }
 
 // ─── FLOATING ACTION BUTTON ───────────────────────────────────────────────────
-function FAB({ onTransaction, onAccount, onGoal, onCycle }) {
+function FAB({ onTransaction, onBill, onGoal }) {
   const [open, setOpen] = useState(false)
   const actions = [
-    { label: 'Transaction', color: C.purple, fn: onTransaction },
-    { label: 'Account',     color: C.green,  fn: onAccount },
-    { label: 'Goal',        color: C.blue,   fn: onGoal },
-    { label: 'Cycle',       color: C.orange, fn: onCycle },
+    { label: 'Add Transaction', color: C.purple, fn: onTransaction },
+    { label: 'Add Bill',        color: C.orange, fn: onBill },
+    { label: 'Save to Goal',    color: C.green,  fn: onGoal },
   ]
   return (
     <>
@@ -1569,21 +1718,23 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [accounts, setAccounts] = useState([])
   const [transactions, setTransactions] = useState([])
   const [overrides, setOverrides] = useState([])
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('now')
   const [reconcileAccount, setReconcileAccount] = useState(null)
   const [showAddTx, setShowAddTx] = useState(false)
+  const [showAddBill, setShowAddBill] = useState(false)
   const [showCheckin, setShowCheckin] = useState(false)
   const [showBookPicker, setShowBookPicker] = useState(false)
   const [showNotifSheet, setShowNotifSheet] = useState(false)
   const [showShareSheet, setShowShareSheet] = useState(false)
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
-  const [showBurger, setShowBurger] = useState(false)
+  const [showStack, setShowStack] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [currentTheme, setCurrentTheme] = useState(() => localStorage.getItem('lt_theme') || 'dark')
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
-  const [accountInitAdd, setAccountInitAdd] = useState(false)
 
   const today = todayStr()
 
@@ -1593,9 +1744,10 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   }, [today])
 
   const loadData = useCallback(async () => {
-    const [{ data: accts }, { data: txs }] = await Promise.all([
+    const [{ data: accts }, { data: txs }, { data: cats }] = await Promise.all([
       supabase.from('cashflow_accounts').select('*').eq('book_id', book.id).order('name'),
       supabase.from('cashflow_transactions').select('*').eq('book_id', book.id).order('date'),
+      supabase.from('categories').select('*').eq('book_id', book.id).order('sort_order'),
     ])
     const txIds = (txs || []).map(t => t.id)
     let ovs = []
@@ -1606,6 +1758,14 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     setAccounts(accts || [])
     setTransactions(txs || [])
     setOverrides(ovs)
+    // Seed default categories if none exist
+    if (!cats || cats.length === 0) {
+      await seedDefaultCategories(book.id)
+      const { data: fresh } = await supabase.from('categories').select('*').eq('book_id', book.id).order('sort_order')
+      setCategories(fresh || [])
+    } else {
+      setCategories(cats)
+    }
     setLoading(false)
   }, [book.id])
 
@@ -1618,28 +1778,18 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
   async function handleReconcileSave({ newBalance, newBaselineDate, overrides: ovToWrite, newTransactions: newTxs }) {
     const acct = reconcileAccount
-
-    // Upsert overrides
     for (const ov of ovToWrite) {
       const existing = overrides.find(o => String(o.transaction_id) === String(ov.transaction_id) && o.instance_date === ov.instance_date)
-      if (existing) {
-        await supabase.from('cashflow_overrides').update({ action: ov.action, modified_amount: ov.modified_amount }).eq('id', existing.id)
-      } else {
-        await supabase.from('cashflow_overrides').insert(ov)
-      }
+      if (existing) await supabase.from('cashflow_overrides').update({ action: ov.action, modified_amount: ov.modified_amount }).eq('id', existing.id)
+      else await supabase.from('cashflow_overrides').insert(ov)
     }
-
-    // Create new transactions
     for (const nt of newTxs) {
       await supabase.from('cashflow_transactions').insert({
         label: nt.label, amount: parseFloat(nt.amount), type: nt.type,
         account: acct.name, date: nt.date || newBaselineDate, recurrence: 'once', book_id: book.id,
       })
     }
-
-    // Update account balance and baseline_date
     await supabase.from('cashflow_accounts').update({ balance: newBalance, baseline_date: newBaselineDate }).eq('id', acct.id)
-
     setReconcileAccount(null)
     dismissCheckin()
     await loadData()
@@ -1659,47 +1809,40 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   }
 
   const MAIN_TABS = [
-    { id: 'overview',     label: 'Home',     icon: '⌂' },
-    { id: 'goals',        label: 'Goals',    icon: '◈' },
-    { id: 'accounts',     label: 'Accounts', icon: '◎' },
-    { id: 'transactions', label: 'Manage',   icon: '✦' },
+    { id: 'now',          label: 'Now',     icon: '⌂' },
+    { id: 'ahead',        label: 'Ahead',   icon: '→' },
+    { id: 'transactions', label: 'History', icon: '≡' },
   ]
-  const isBurgerActive = ['cycles', 'agenda', 'calendar'].includes(activeTab)
+  const isStackActive = ['cycles', 'goals', 'accounts'].includes(activeTab)
 
   return (
     <div style={S.root}>
       {/* Header */}
-      <div style={{ background: 'var(--c-header-grad)', padding: '16px 16px 12px', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ background: 'var(--c-header-grad)', padding: '14px 16px 10px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 3, textTransform: 'uppercase' }}>
               {new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
             <div style={{ fontSize: 18, fontWeight: 700, color: C.text, letterSpacing: -0.3 }}>Lighthouse Trail</div>
-            <button
-              onClick={() => setShowBookPicker(true)}
-              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}
-            >
+            <button onClick={() => setShowBookPicker(true)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
               <span style={{ fontSize: 10, color: C.textLow }}>{book.name}</span>
               <span style={{ fontSize: 9, color: C.purple }}>▾</span>
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <button onClick={() => setShowShareSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
-              👥
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <button onClick={() => setShowHelp(true)} title="How it works"
+              style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 14, cursor: 'pointer', padding: '4px 7px', lineHeight: 1, fontFamily: 'inherit' }}>
+              ⓘ
             </button>
-            <button onClick={() => setShowNotifSheet(true)} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 16, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}>
-              🔔
-            </button>
-            <button
-              onClick={() => setShowThemePicker(v => !v)}
-              title="Appearance"
-              style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
-            >
+            <button onClick={() => setShowThemePicker(v => !v)} title="Appearance"
+              style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
               ◐
             </button>
-            <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', padding: '4px 8px' }}>
-              Sign out
+            <button onClick={() => setShowStack(true)} title="More"
+              style={{ background: 'none', border: 'none', color: isStackActive ? C.purple : C.textLow, fontSize: 17, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
+              ☰
             </button>
           </div>
         </div>
@@ -1717,26 +1860,17 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
                 {b.id === book.id && <span style={{ fontSize: 12, color: C.purple }}>✓</span>}
               </button>
             ))}
-            {/* New book form */}
             <div style={{ borderTop: `1px solid ${C.border}`, padding: '10px 14px 14px' }}>
-              {newBookName !== null && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    style={{ ...S.inp, flex: 1, fontSize: 13, padding: '8px 10px' }}
-                    placeholder="New book name…"
-                    value={newBookName}
-                    onChange={e => setNewBookName(e.target.value)}
-                    onKeyDown={async e => { if (e.key === 'Enter') await createBook() }}
-                  />
-                  <button
-                    disabled={creatingBook || !newBookName.trim()}
-                    onClick={async () => await createBook()}
-                    style={{ ...S.btn(), padding: '8px 14px', fontSize: 12, opacity: (!newBookName.trim() || creatingBook) ? 0.5 : 1 }}
-                  >
-                    {creatingBook ? '…' : 'Create'}
-                  </button>
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input style={{ ...S.inp, flex: 1, fontSize: 13, padding: '8px 10px' }}
+                  placeholder="New book name…" value={newBookName}
+                  onChange={e => setNewBookName(e.target.value)}
+                  onKeyDown={async e => { if (e.key === 'Enter') await createBook() }} />
+                <button disabled={creatingBook || !newBookName.trim()} onClick={createBook}
+                  style={{ ...S.btn(), padding: '8px 14px', fontSize: 12, opacity: (!newBookName.trim() || creatingBook) ? 0.5 : 1 }}>
+                  {creatingBook ? '…' : 'Create'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1748,21 +1882,28 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           <CheckInBanner
             onReconcile={() => {
               setShowCheckin(false)
-              if (accounts.length === 1) {
-                setReconcileAccount(accounts[0])
-              } else if (accounts.length > 1) {
-                setShowAccountPicker(true)
-              }
+              if (accounts.length === 1) setReconcileAccount(accounts[0])
+              else if (accounts.length > 1) setShowAccountPicker(true)
             }}
             onQuickAdd={() => { setShowCheckin(false); setShowAddTx(true) }}
             onDismiss={dismissCheckin}
           />
         )}
-
         {loading ? <Spinner /> : (
           <>
-            {activeTab === 'overview' && (
-              <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides} onReconcile={setReconcileAccount} bookId={book.id} onGoToCycles={() => setActiveTab('cycles')} />
+            {activeTab === 'now' && (
+              <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides}
+                onReconcile={setReconcileAccount} bookId={book.id}
+                onGoToCycles={() => setActiveTab('cycles')}
+                onGoToAccounts={() => setActiveTab('accounts')} />
+            )}
+            {activeTab === 'ahead' && (
+              <AheadTab accounts={accounts} transactions={transactions} overrides={overrides}
+                onOverrideChange={loadData} bookId={book.id} categories={categories} />
+            )}
+            {activeTab === 'transactions' && (
+              <TransactionsTab accounts={accounts} transactions={transactions} overrides={overrides}
+                bookId={book.id} onRefresh={loadData} categories={categories} />
             )}
             {activeTab === 'cycles' && (
               <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />
@@ -1770,18 +1911,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             {activeTab === 'goals' && (
               <GoalsTab bookId={book.id} />
             )}
-            {activeTab === 'agenda' && (
-              <AgendaTab accounts={accounts} transactions={transactions} overrides={overrides} onOverrideChange={loadData} />
-            )}
-            {activeTab === 'calendar' && (
-              <CalendarTab accounts={accounts} transactions={transactions} overrides={overrides} />
-            )}
             {activeTab === 'accounts' && (
-              <AccountsTab accounts={accounts} bookId={book.id} onReconcile={setReconcileAccount} onRefresh={loadData}
-                initAdd={accountInitAdd} onInitAddDone={() => setAccountInitAdd(false)} />
-            )}
-            {activeTab === 'transactions' && (
-              <TransactionsTab transactions={transactions} bookId={book.id} onRefresh={loadData} />
+              <AccountsTab accounts={accounts} bookId={book.id} onReconcile={setReconcileAccount}
+                onRefresh={loadData} initAdd={false} onInitAddDone={() => {}} />
             )}
           </>
         )}
@@ -1790,36 +1922,26 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       {/* Bottom tab bar */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {MAIN_TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
             <span style={{ fontSize: 17, lineHeight: 1, color: activeTab === t.id ? C.purple : C.textMid }}>{t.icon}</span>
             <span style={{ fontSize: 9, color: activeTab === t.id ? C.purple : C.textLow, fontWeight: activeTab === t.id ? 700 : 400, letterSpacing: 0.3 }}>{t.label}</span>
             {activeTab === t.id && <div style={{ width: 16, height: 2, background: C.purple, borderRadius: 1 }} />}
           </button>
         ))}
-        <button onClick={() => setShowBurger(true)} style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 17, lineHeight: 1, color: isBurgerActive ? C.purple : C.textMid }}>☰</span>
-          <span style={{ fontSize: 9, color: isBurgerActive ? C.purple : C.textLow, fontWeight: isBurgerActive ? 700 : 400, letterSpacing: 0.3 }}>More</span>
-          {isBurgerActive && <div style={{ width: 16, height: 2, background: C.purple, borderRadius: 1 }} />}
-        </button>
       </div>
 
       {/* FAB */}
       <FAB
         onTransaction={() => setShowAddTx(true)}
-        onAccount={() => { setActiveTab('accounts'); setAccountInitAdd(true) }}
+        onBill={() => setShowAddBill(true)}
         onGoal={() => setActiveTab('goals')}
-        onCycle={() => setActiveTab('cycles')}
       />
 
       {/* Theme picker */}
       {showThemePicker && (
-        <ThemePicker
-          current={currentTheme}
-          onClose={() => {
-            setCurrentTheme(localStorage.getItem('lt_theme') || 'dark')
-            setShowThemePicker(false)
-          }}
-        />
+        <ThemePicker current={currentTheme}
+          onClose={() => { setCurrentTheme(localStorage.getItem('lt_theme') || 'dark'); setShowThemePicker(false) }} />
       )}
 
       {/* Account picker for reconcile */}
@@ -1831,11 +1953,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               <button onClick={() => setShowAccountPicker(false)} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
             </div>
             {accounts.map(a => (
-              <button
-                key={a.id}
-                onClick={() => { setShowAccountPicker(false); setReconcileAccount(a) }}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: 10, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', marginBottom: 8, textAlign: 'left' }}
-              >
+              <button key={a.id} onClick={() => { setShowAccountPicker(false); setReconcileAccount(a) }}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: 10, padding: '13px 14px', color: C.text, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', marginBottom: 8, textAlign: 'left' }}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{a.name}</div>
                   {a.type && <div style={{ fontSize: 10, color: C.textLow, marginTop: 2 }}>{a.type}</div>}
@@ -1851,21 +1970,19 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
       {/* Modals */}
       {reconcileAccount && (
-        <ReconcileModal
-          account={reconcileAccount}
-          transactions={transactions}
-          overrides={overrides}
-          onSave={handleReconcileSave}
-          onClose={() => setReconcileAccount(null)}
-        />
+        <ReconcileModal account={reconcileAccount} transactions={transactions} overrides={overrides}
+          onSave={handleReconcileSave} onClose={() => setReconcileAccount(null)} />
       )}
       {showAddTx && (
-        <AddTxModal
-          bookId={book.id}
-          accounts={accounts}
+        <AddTxModal bookId={book.id} accounts={accounts} categories={categories}
           onSave={() => { setShowAddTx(false); loadData() }}
-          onClose={() => setShowAddTx(false)}
-        />
+          onClose={() => setShowAddTx(false)} />
+      )}
+      {showAddBill && (
+        <AddTxModal bookId={book.id} accounts={accounts} categories={categories}
+          defaultType="expense" defaultRecurrence="monthly"
+          onSave={() => { setShowAddBill(false); loadData() }}
+          onClose={() => setShowAddBill(false)} />
       )}
       {showNotifSheet && (
         <NotificationSheet session={session} bookId={book.id} onClose={() => setShowNotifSheet(false)} />
@@ -1873,9 +1990,15 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       {showShareSheet && (
         <ShareSheet book={book} session={session} onClose={() => setShowShareSheet(false)} />
       )}
-      {showBurger && (
-        <BurgerMenu activeTab={activeTab} onNavigate={setActiveTab} onClose={() => setShowBurger(false)} />
+      {showStack && (
+        <StackMenu activeTab={activeTab}
+          onNavigate={t => setActiveTab(t)}
+          onShowNotif={() => setShowNotifSheet(true)}
+          onShowShare={() => setShowShareSheet(true)}
+          onSignOut={onSignOut}
+          onClose={() => setShowStack(false)} />
       )}
+      {showHelp && <HelpSheet onClose={() => setShowHelp(false)} />}
     </div>
   )
 }

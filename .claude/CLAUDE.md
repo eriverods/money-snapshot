@@ -5,7 +5,7 @@ Instructions here apply to this project and are shared with team members.
 ## Context
 
 ## Project Overview
-React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar with 7 tabs: Home, Cycles, Goals, Agenda, Cal, Accounts, Manage.
+React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar has 3 primary tabs (Now, Ahead, History) + a StackMenu (☰ in header) for secondary navigation.
 
 ## Tech Stack
 - React (Vite), inline styles only — no CSS files or Tailwind
@@ -71,12 +71,27 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Tracking-only accounts**: excluded from totalCash, running balance in Agenda, and Calendar projections. Toggle per card ("● In balance" / "○ Tracking only"). OverviewTab shows "tracking only" label.
 - `initAdd` / `onInitAddDone` props trigger the add form open from parent (used by FAB)
 
+## Multiple Books Feature
+- Users can own multiple books; book picker always visible under "Lighthouse Trail" header title
+- Inline new book creation: text field + Create button inside the picker dropdown
+- `switchBook(b)` in App root adds new books to `allBooks` list if not already present, then sets active book
+- On load, App queries both `books` (owned) and `book_members` (shared) and merges into `allBooks`
+- First book in `allBooks` is selected by default
+
 ## Bottom Navigation
-- 4 main tabs in the bar: Home (⌂), Goals (◈), Accounts (◎), Manage (✦)
-- 5th item: ☰ **More** burger button → opens `BurgerMenu` bottom sheet
-- `BurgerMenu` component lists Cycles, Agenda, Calendar as large nav cards with descriptions
-- "ℹ How it works" toggle inside BurgerMenu shows descriptions of all 7 tabs
-- Burger button highlights when activeTab is cycles/agenda/calendar
+- 3 main tabs: Now (⌂), Ahead (→), History (≡)
+- Header ☰ button → opens `StackMenu` bottom sheet
+- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Notifications 🔔, Share Book 👥, Sign Out
+- Tapping Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
+- Header also has ⓘ (opens HelpSheet) and ◐ (theme picker)
+
+## Categories Feature
+- `categories` table: `id, book_id, name, sort_order, is_default, archived`
+- RLS via `user_has_book_access(book_id)`
+- `cashflow_transactions.category` column (text, stores category name)
+- Default categories seeded lazily in `MainApp.loadData()` when `categories` table is empty for the book
+- Default list: Income, Housing, Transport, Groceries, Dining, Health, Subscriptions, Personal Care, Clothing, Entertainment, Savings Transfer, Debt Payment, Kids, Pets, Gifts, Other
+- Category filter available in History tab
 
 ## Theme System
 - Dark (default): dark amethyst-tinted surfaces (`#0d0814`), lavender accent (`#c9a0e0`), Muted Teal positive (`#79aea3`), Terracotta negative (`#c97c73`), Sunlit Clay warning (`#f3c178`)
@@ -85,8 +100,21 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 
 ## Floating Action Button (FAB)
 - `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)
-- Tapping `+` opens 4 action buttons: Transaction (opens AddTxModal), Account (switches to Accounts tab + triggers add form), Goal (switches to Goals tab), Cycle (switches to Cycles tab)
+- Tapping `+` opens 3 action buttons: Add Transaction (opens AddTxModal), Add Bill (opens AddTxModal pre-set to expense+recurring), Save to Goal (navigates to goals tab)
 - Backdrop div closes menu on outside tap
+
+## Tab Descriptions
+- **Now (⌂)**: OverviewTab — safe-to-spend hero, accounts, today's activity, tight envelopes, upcoming bills
+- **Ahead (→)**: AheadTab — pay cycle countdown, next 30-day timeline grouped by date, tap to approve/skip/edit amount
+- **History (≡)**: TransactionsTab — full instance list past 90d + future 30d, sort/filter, tap to edit via EditTxSheet
+- **Cycles (⊙)**: CyclesTab (via StackMenu) — pay cycle management and envelope budgets
+- **Goals (◈)**: GoalsTab (via StackMenu) — savings goals with progress bars
+- **Accounts (◎)**: AccountsTab (via StackMenu) — account management and reconcile
+
+## HelpSheet (ⓘ)
+- Opens from ⓘ icon in header
+- Plain-language explanations of each feature (ADHD-friendly, calm friend tone)
+- No jargon, warm language
 
 ## Mobile Layout
 - `S.root` paddingBottom: `calc(80px + env(safe-area-inset-bottom))` — accounts for tab bar + home indicator
