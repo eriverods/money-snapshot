@@ -94,9 +94,13 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - Category filter available in History tab
 
 ## Theme System
-- Dark (default): dark amethyst-tinted surfaces (`#0d0814`), lavender accent (`#c9a0e0`), Muted Teal positive (`#79aea3`), Terracotta negative (`#c97c73`), Sunlit Clay warning (`#f3c178`)
-- Light: warm cream surfaces (`#faf5ef`), Dark Amethyst accent (`#42033d`), Dark Teal positive (`#004346`), Terracotta darkened negative (`#9a4e47`), darkened Sunlit Clay warning
-- High-contrast and color-blind modes unchanged
+- 3 palettes: **Amethyst** (purple, default), **Sage** (forest green), **Cobalt** (navy blue)
+- 2 modes: **Dark** / **Light** (swappable per palette)
+- 3 accessibility overlays: **None** / **High Contrast** / **Color-Blind Safe**
+- Theme ID: `dark`, `light`, `high-contrast`, `color-blind`, `dark-sage`, `light-sage`, `dark-cobalt`, `light-cobalt`
+- Stored in `localStorage` key `lt_theme`; parsed/built by `parseTheme()` / `buildThemeId()`
+- ThemePicker is a bottom sheet (◐ header icon) with: palette swatch strip, mode preview cards (mini app mockup), accessibility segmented control
+- Saves immediately on tap (no confirm button)
 
 ## Floating Action Button (FAB)
 - `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)

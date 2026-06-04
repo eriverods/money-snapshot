@@ -1561,31 +1561,134 @@ function NotificationSheet({ session, bookId, onClose }) {
 }
 
 // ─── THEME PICKER ─────────────────────────────────────────────────────────────
-const THEMES = [
-  { id: 'dark',         label: 'Dark',         icon: '◑' },
-  { id: 'light',        label: 'Light',        icon: '○' },
-  { id: 'high-contrast',label: 'High Contrast',icon: '◉' },
-  { id: 'color-blind',  label: 'Color-blind',  icon: '◐' },
+const PALETTES = [
+  { id: 'amethyst', label: 'Amethyst', swatches: ['#1d0a30','#c9a0e0','#79aea3','#c97c73','#f3c178'] },
+  { id: 'sage',     label: 'Sage',     swatches: ['#101e14','#7ab899','#6bad85','#c9826e','#e8c87a'] },
+  { id: 'cobalt',   label: 'Cobalt',   swatches: ['#0d1628','#6a9fd4','#76b4cc','#c97c6e','#f0c870'] },
+]
+const A11Y_OPTIONS = [
+  { id: 'none',          label: 'None' },
+  { id: 'high-contrast', label: 'High Contrast' },
+  { id: 'color-blind',   label: 'Color-Blind' },
 ]
 
-function ThemePicker({ current, onClose }) {
-  function apply(id) {
+function parseTheme(id) {
+  if (!id || id === 'dark')    return { palette: 'amethyst', mode: 'dark',  a11y: 'none' }
+  if (id === 'light')          return { palette: 'amethyst', mode: 'light', a11y: 'none' }
+  if (id === 'high-contrast')  return { palette: 'amethyst', mode: 'dark',  a11y: 'high-contrast' }
+  if (id === 'color-blind')    return { palette: 'amethyst', mode: 'dark',  a11y: 'color-blind' }
+  const [m, p] = id.split('-') // e.g. 'dark-sage', 'light-cobalt'
+  return { palette: p || 'amethyst', mode: m || 'dark', a11y: 'none' }
+}
+
+function buildThemeId(palette, mode, a11y) {
+  if (a11y !== 'none') return a11y
+  if (palette === 'amethyst') return mode
+  return `${mode}-${palette}`
+}
+
+function ModeCard({ id, selected, palette, onClick }) {
+  const isDark = id === 'dark'
+  const bg      = isDark ? '#0d0814' : '#faf5ef'
+  const surface = isDark ? '#160e21' : '#ffffff'
+  const accent  = isDark ? '#c9a0e0' : '#42033d'
+  const pos     = isDark ? '#79aea3' : '#004346'
+  const neg     = isDark ? '#c97c73' : '#9a4e47'
+  const headerBg = isDark ? '#1d0a30' : '#42033d'
+  return (
+    <button onClick={onClick} style={{ flex: 1, background: bg, border: `2px solid ${selected ? accent : 'transparent'}`, borderRadius: 12, padding: '10px 8px', cursor: 'pointer', textAlign: 'left', outline: 'none' }}>
+      {/* mini header */}
+      <div style={{ background: headerBg, borderRadius: 6, height: 14, marginBottom: 7, display: 'flex', alignItems: 'center', padding: '0 5px', gap: 4 }}>
+        <div style={{ width: 4, height: 4, borderRadius: '50%', background: isDark ? 'rgba(240,234,245,0.6)' : 'rgba(255,255,255,0.7)' }} />
+        <div style={{ flex: 1, height: 2, background: isDark ? 'rgba(240,234,245,0.25)' : 'rgba(255,255,255,0.35)', borderRadius: 1 }} />
+        <div style={{ width: 10, height: 2, background: isDark ? 'rgba(240,234,245,0.25)' : 'rgba(255,255,255,0.35)', borderRadius: 1 }} />
+      </div>
+      {/* hero card */}
+      <div style={{ background: surface, borderRadius: 6, padding: '5px 7px', marginBottom: 5, border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+        <div style={{ fontSize: 6, color: isDark ? 'rgba(240,234,245,0.45)' : 'rgba(26,10,24,0.45)', marginBottom: 2 }}>Safe to spend</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: pos }}>$1,240</div>
+      </div>
+      {/* two mock rows */}
+      {[pos, neg].map((c, i) => (
+        <div key={i} style={{ background: surface, borderRadius: 5, padding: '4px 7px', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}` }}>
+          <div style={{ width: 36, height: 4, background: isDark ? 'rgba(240,234,245,0.12)' : 'rgba(26,10,24,0.10)', borderRadius: 2 }} />
+          <div style={{ width: 18, height: 4, background: `${c}66`, borderRadius: 2 }} />
+        </div>
+      ))}
+      <div style={{ textAlign: 'center', fontSize: 11, fontWeight: selected ? 700 : 400, color: selected ? accent : (isDark ? 'rgba(240,234,245,0.45)' : 'rgba(26,10,24,0.45)'), marginTop: 5 }}>
+        {selected && '✓ '}{id === 'dark' ? 'Dark' : 'Light'}
+      </div>
+    </button>
+  )
+}
+
+function ThemePicker({ current, onChange, onClose }) {
+  const p0 = parseTheme(current)
+  const [palette, setPalette] = useState(p0.palette)
+  const [mode, setMode] = useState(p0.mode)
+  const [a11y, setA11y] = useState(p0.a11y)
+
+  function applyNow(p, m, a) {
+    const id = buildThemeId(p, m, a)
     document.documentElement.setAttribute('data-theme', id)
     localStorage.setItem('lt_theme', id)
-    onClose()
+    onChange(id)
   }
+  function pickPalette(p) { setPalette(p); applyNow(p, mode, a11y) }
+  function pickMode(m)    { setMode(m); setA11y('none'); applyNow(palette, m, 'none') }
+  function pickA11y(a)    { setA11y(a); applyNow(palette, mode, a) }
+
+  const modeActive = a11y === 'none'
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 300 }} onClick={onClose}>
-      <div style={{ position: 'absolute', top: 68, right: 12, background: C.surface, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden', minWidth: 180 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', padding: '10px 14px 6px' }}>Appearance</div>
-        {THEMES.map(t => (
-          <button key={t.id} onClick={() => apply(t.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: current === t.id ? C.surfaceHigh : 'none', border: 'none', borderTop: `1px solid ${C.border}`, padding: '11px 14px', color: C.text, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
-            <span style={{ fontSize: 16 }}>{t.icon}</span>
-            <span style={{ flex: 1 }}>{t.label}</span>
-            {current === t.id && <span style={{ fontSize: 11, color: C.purple }}>✓</span>}
-          </button>
-        ))}
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={{ ...sheetInner, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+        <div style={sheetHeader}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Appearance</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '18px 16px 36px', overflowY: 'auto' }}>
+
+          {/* Palette */}
+          <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>Palette</div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 26 }}>
+            {PALETTES.map(p => {
+              const sel = palette === p.id
+              return (
+                <button key={p.id} onClick={() => pickPalette(p.id)}
+                  style={{ flex: 1, background: sel ? `${C.purple}18` : C.surfaceHigh, border: `2px solid ${sel ? C.purple : C.border}`, borderRadius: 12, padding: '10px 6px', cursor: 'pointer', textAlign: 'center' }}>
+                  <div style={{ display: 'flex', gap: 4, justifyContent: 'center', marginBottom: 8 }}>
+                    {p.swatches.map((s, i) => (
+                      <div key={i} style={{ width: 14, height: 14, borderRadius: '50%', background: s, flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.4)' }} />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 11, color: sel ? C.purple : C.textMid, fontWeight: sel ? 700 : 400 }}>
+                    {sel ? '✓ ' : ''}{p.label}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Mode */}
+          <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>Mode</div>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 26 }}>
+            <ModeCard id="dark"  selected={modeActive && mode === 'dark'}  palette={palette} onClick={() => pickMode('dark')} />
+            <ModeCard id="light" selected={modeActive && mode === 'light'} palette={palette} onClick={() => pickMode('light')} />
+          </div>
+
+          {/* Accessibility */}
+          <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>Accessibility</div>
+          <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+            {A11Y_OPTIONS.map((a, i) => (
+              <button key={a.id} onClick={() => pickA11y(a.id)}
+                style={{ flex: 1, background: a11y === a.id ? C.purple : C.surfaceHigh, border: 'none', borderLeft: i > 0 ? `1px solid ${C.border}` : 'none', padding: '11px 4px', color: a11y === a.id ? 'var(--c-btn-text)' : C.textMid, fontFamily: 'inherit', fontSize: 11, cursor: 'pointer', fontWeight: a11y === a.id ? 700 : 400 }}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+        </div>
       </div>
     </div>
   )
@@ -1836,8 +1939,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 14, cursor: 'pointer', padding: '4px 7px', lineHeight: 1, fontFamily: 'inherit' }}>
               ⓘ
             </button>
-            <button onClick={() => setShowThemePicker(v => !v)} title="Appearance"
-              style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
+            <button onClick={() => setShowThemePicker(true)} title="Appearance"
+              style={{ background: 'none', border: 'none', color: showThemePicker ? C.purple : C.textLow, fontSize: 15, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
               ◐
             </button>
             <button onClick={() => setShowStack(true)} title="More"
@@ -1941,7 +2044,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       {/* Theme picker */}
       {showThemePicker && (
         <ThemePicker current={currentTheme}
-          onClose={() => { setCurrentTheme(localStorage.getItem('lt_theme') || 'dark'); setShowThemePicker(false) }} />
+          onChange={setCurrentTheme}
+          onClose={() => setShowThemePicker(false)} />
       )}
 
       {/* Account picker for reconcile */}

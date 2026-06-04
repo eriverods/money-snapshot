@@ -222,6 +222,172 @@
   --palette-muted-teal: #79aea3;
 }
 
+/* ─── SAGE (DARK) ────────────────────────────────────────────────────────────
+   Forest green surfaces. Sage = accent, warm amber = negative, soft gold = warning. */
+[data-theme="dark-sage"] {
+  color-scheme: dark;
+
+  --c-bg:         #090f0c;
+  --c-surface:    #101e14;
+  --c-surface-hi: #182d1e;
+  --c-border:     #1f3a28;
+  --c-input-bg:   #0c1810;
+
+  --c-text:       #e8f5ec;
+  --c-text-mid:   #7aaa88;
+  --c-text-low:   #4a7055;
+
+  --c-accent:     #7ab899;
+  --c-positive:   #6bad85;
+  --c-pos-bg:     #0b1e14;
+  --c-negative:   #c9826e;
+  --c-neg-bg:     #2d1410;
+  --c-warning:    #e8c87a;
+  --c-info:       #9ab8c8;
+  --c-btn-text:   #090f0c;
+  --c-header-grad: linear-gradient(135deg, #0d2215, #1a4030);
+
+  --c-warn-bg:         rgba(232, 200, 122, 0.09);
+  --c-warn-border:     rgba(232, 200, 122, 0.28);
+  --c-warn-50:         rgba(232, 200, 122, 0.50);
+  --c-info-67:         rgba(154, 184, 200, 0.67);
+  --c-positive-67:     rgba(107, 173, 133, 0.67);
+  --c-negative-67:     rgba(201, 130, 110, 0.67);
+  --c-positive-13:     rgba(107, 173, 133, 0.13);
+  --c-negative-13:     rgba(201, 130, 110, 0.13);
+  --c-warn-near-empty: #1f2800;
+
+  --palette-amethyst:   #42033d;
+  --palette-terracotta: #b2675e;
+  --palette-sunlit:     #f3c178;
+  --palette-dark-teal:  #004346;
+  --palette-muted-teal: #79aea3;
+}
+
+/* ─── SAGE (LIGHT) ──────────────────────────────────────────────────────────── */
+[data-theme="light-sage"] {
+  color-scheme: light;
+
+  --c-bg:         #f3f9f5;
+  --c-surface:    #ffffff;
+  --c-surface-hi: #e4f0e8;
+  --c-border:     #b8d4c0;
+  --c-input-bg:   #ecf5ef;
+
+  --c-text:       #071a0c;
+  --c-text-mid:   #3a6045;
+  --c-text-low:   #7a9e84;
+
+  --c-accent:     #2a6040;
+  --c-positive:   #2a6040;
+  --c-pos-bg:     #d4edda;
+  --c-negative:   #954840;
+  --c-neg-bg:     #fce5e4;
+  --c-warning:    #725010;
+  --c-info:       #1a5850;
+  --c-btn-text:   #ffffff;
+  --c-header-grad: linear-gradient(135deg, #1a3a24, #2a6040);
+
+  --c-warn-bg:         rgba(114, 80, 16, 0.08);
+  --c-warn-border:     rgba(114, 80, 16, 0.25);
+  --c-warn-50:         rgba(114, 80, 16, 0.50);
+  --c-info-67:         rgba( 26, 88, 80, 0.67);
+  --c-positive-67:     rgba( 42, 96, 64, 0.67);
+  --c-negative-67:     rgba(149, 72, 64, 0.67);
+  --c-positive-13:     rgba( 42, 96, 64, 0.13);
+  --c-negative-13:     rgba(149, 72, 64, 0.13);
+  --c-warn-near-empty: #3d1500;
+
+  --palette-amethyst:   #42033d;
+  --palette-terracotta: #b2675e;
+  --palette-sunlit:     #f3c178;
+  --palette-dark-teal:  #004346;
+  --palette-muted-teal: #79aea3;
+}
+
+/* ─── COBALT (DARK) ──────────────────────────────────────────────────────────
+   Deep navy surfaces. Cobalt blue accent, sky positive, terracotta negative. */
+[data-theme="dark-cobalt"] {
+  color-scheme: dark;
+
+  --c-bg:         #080d18;
+  --c-surface:    #0d1628;
+  --c-surface-hi: #152240;
+  --c-border:     #1c3050;
+  --c-input-bg:   #0a1220;
+
+  --c-text:       #e8eff8;
+  --c-text-mid:   #7a9ac8;
+  --c-text-low:   #485e80;
+
+  --c-accent:     #6a9fd4;
+  --c-positive:   #76b4cc;
+  --c-pos-bg:     #0a1e30;
+  --c-negative:   #c97c6e;
+  --c-neg-bg:     #2d1210;
+  --c-warning:    #f0c870;
+  --c-info:       #90c8e8;
+  --c-btn-text:   #080d18;
+  --c-header-grad: linear-gradient(135deg, #050a12, #0e2040);
+
+  --c-warn-bg:         rgba(240, 200, 112, 0.09);
+  --c-warn-border:     rgba(240, 200, 112, 0.28);
+  --c-warn-50:         rgba(240, 200, 112, 0.50);
+  --c-info-67:         rgba(144, 200, 232, 0.67);
+  --c-positive-67:     rgba(118, 180, 204, 0.67);
+  --c-negative-67:     rgba(201, 124, 110, 0.67);
+  --c-positive-13:     rgba(118, 180, 204, 0.13);
+  --c-negative-13:     rgba(201, 124, 110, 0.13);
+  --c-warn-near-empty: #1a1800;
+
+  --palette-amethyst:   #42033d;
+  --palette-terracotta: #b2675e;
+  --palette-sunlit:     #f3c178;
+  --palette-dark-teal:  #004346;
+  --palette-muted-teal: #79aea3;
+}
+
+/* ─── COBALT (LIGHT) ────────────────────────────────────────────────────────── */
+[data-theme="light-cobalt"] {
+  color-scheme: light;
+
+  --c-bg:         #f0f5fb;
+  --c-surface:    #ffffff;
+  --c-surface-hi: #deeaf6;
+  --c-border:     #aecce4;
+  --c-input-bg:   #e8f0f8;
+
+  --c-text:       #051228;
+  --c-text-mid:   #2a4870;
+  --c-text-low:   #6a88aa;
+
+  --c-accent:     #1a4870;
+  --c-positive:   #0a4060;
+  --c-pos-bg:     #cce4f2;
+  --c-negative:   #954840;
+  --c-neg-bg:     #fce5e4;
+  --c-warning:    #7a4010;
+  --c-info:       #1a5878;
+  --c-btn-text:   #ffffff;
+  --c-header-grad: linear-gradient(135deg, #0a1a30, #1a4878);
+
+  --c-warn-bg:         rgba(122, 64, 16, 0.08);
+  --c-warn-border:     rgba(122, 64, 16, 0.25);
+  --c-warn-50:         rgba(122, 64, 16, 0.50);
+  --c-info-67:         rgba( 26, 88,120, 0.67);
+  --c-positive-67:     rgba( 10, 64, 96, 0.67);
+  --c-negative-67:     rgba(149, 72, 64, 0.67);
+  --c-positive-13:     rgba( 10, 64, 96, 0.13);
+  --c-negative-13:     rgba(149, 72, 64, 0.13);
+  --c-warn-near-empty: #3d1500;
+
+  --palette-amethyst:   #42033d;
+  --palette-terracotta: #b2675e;
+  --palette-sunlit:     #f3c178;
+  --palette-dark-teal:  #004346;
+  --palette-muted-teal: #79aea3;
+}
+
 /* ─── GLOBAL RESETS ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
