@@ -5,7 +5,7 @@ Instructions here apply to this project and are shared with team members.
 ## Context
 
 ## Project Overview
-React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar has 3 primary tabs (Now, Ahead, History) + a StackMenu (☰ in header) for secondary navigation.
+React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar has 3 primary tabs (Now, Ahead, Flow) + a StackMenu (☰ in header) for secondary navigation.
 
 ## Tech Stack
 - React (Vite), inline styles only — no CSS files or Tailwind
@@ -77,7 +77,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - First book in `allBooks` is selected by default
 
 ## Bottom Navigation
-- 3 main tabs: Now (⌂), Ahead (→), History (≡)
+- 3 main tabs: Now (⌂), Ahead (→), Flow (≡)
 - Header ☰ button → opens `StackMenu` bottom sheet
 - `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Notifications 🔔, Share Book 👥, Sign Out
 - Tapping Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
@@ -89,7 +89,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - `cashflow_transactions.category` column (text, stores category name)
 - Default categories seeded lazily in `MainApp.loadData()` when `categories` table is empty for the book
 - Default list: Income, Housing, Transport, Groceries, Dining, Health, Subscriptions, Personal Care, Clothing, Entertainment, Savings Transfer, Debt Payment, Kids, Pets, Gifts, Other
-- Category filter available in History tab
+- Category filter available in Flow tab
 
 ## Theme System
 - 3 palettes × 2 modes applied via `data-palette` + `data-mode` on `<html>` element
@@ -117,7 +117,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Tab Descriptions
 - **Now (⌂)**: OverviewTab — safe-to-spend hero, accounts, today's activity, tight envelopes, upcoming bills
 - **Ahead (→)**: AheadTab — pay cycle countdown, next 30-day timeline grouped by date, tap to approve/skip/edit amount
-- **History (≡)**: TransactionsTab — full instance list past 90d + future 30d, sort/filter, tap to edit via EditTxSheet
+- **Flow (≡)**: TransactionsTab — full instance list past 90d + future 30d, sort by date/amount with asc/desc toggle (default: date desc), filter by type/account/category, tap to edit via EditTxSheet
 - **Cycles (⊙)**: CyclesTab (via StackMenu) — pay cycle management and envelope budgets
 - **Goals (◈)**: GoalsTab (via StackMenu) — savings goals with progress bars
 - **Accounts (◎)**: AccountsTab (via StackMenu) — account management and reconcile

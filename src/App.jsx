@@ -1108,6 +1108,7 @@ function TransactionsTab({ accounts, transactions, overrides, bookId, onRefresh,
   const [filterAccount, setFilterAccount] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [sortBy, setSortBy] = useState('date') // 'date' | 'amount'
+  const [sortAsc, setSortAsc] = useState(false) // false = descending (newest/largest first)
   const [editSheet, setEditSheet] = useState(null)
 
   const catOptions = categories?.length ? categories : DEFAULT_CATEGORIES.map(n => ({ name: n }))
@@ -1126,39 +1127,42 @@ function TransactionsTab({ accounts, transactions, overrides, bookId, onRefresh,
         items.push({ tx, date: d, override: ov, state: ov?.action || 'projected', amt })
       }
     }
-    if (sortBy === 'amount') return items.sort((a, b) => b.amt - a.amt)
-    return items.sort((a, b) => b.date.localeCompare(a.date))
-  }, [transactions, overrides, filterType, filterAccount, filterCategory, sortBy, startStr, endStr])
+    if (sortBy === 'amount') return items.sort((a, b) => sortAsc ? a.amt - b.amt : b.amt - a.amt)
+    return items.sort((a, b) => sortAsc ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date))
+  }, [transactions, overrides, filterType, filterAccount, filterCategory, sortBy, sortAsc, startStr, endStr])
 
   return (
     <div>
-      {/* Filter row */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10, overflowX: 'auto', paddingBottom: 2 }}>
-        {[['', 'All'], ['income', 'Income'], ['expense', 'Bills']].map(([v, label]) => (
+      {/* Row 1: type pills + account selector */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+        {[['', 'All'], ['income', 'In'], ['expense', 'Out']].map(([v, label]) => (
           <button key={v} onClick={() => setFilterType(v)}
-            style={{ flexShrink: 0, background: filterType === v ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 20, padding: '6px 14px', color: filterType === v ? 'var(--c-btn-text)' : C.textMid, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: filterType === v ? 700 : 400 }}>
+            style={{ flexShrink: 0, background: filterType === v ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 20, padding: '5px 11px', color: filterType === v ? 'var(--c-btn-text)' : C.textMid, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: filterType === v ? 700 : 400 }}>
             {label}
           </button>
         ))}
-        <select style={{ ...S.sel, flexShrink: 0, minWidth: 100, fontSize: 12, padding: '5px 10px' }} value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
-          <option value="">All accounts</option>
+        <select style={{ ...S.sel, flex: 1, minWidth: 0, fontSize: 12, padding: '5px 8px' }} value={filterAccount} onChange={e => setFilterAccount(e.target.value)}>
+          <option value="">Account</option>
           {accounts.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}
-        </select>
-        <select style={{ ...S.sel, flexShrink: 0, minWidth: 110, fontSize: 12, padding: '5px 10px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-          <option value="">All categories</option>
-          {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
         </select>
       </div>
 
-      {/* Sort row */}
+      {/* Row 2: category + sort field + sort direction */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center' }}>
-        <span style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1.5 }}>Sort</span>
-        {[['date', 'Date'], ['amount', 'Amount']].map(([v, label]) => (
+        <select style={{ ...S.sel, flex: 1, minWidth: 0, fontSize: 12, padding: '5px 8px' }} value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+          <option value="">Category</option>
+          {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
+        </select>
+        {[['date', 'Date'], ['amount', 'Amt']].map(([v, label]) => (
           <button key={v} onClick={() => setSortBy(v)}
-            style={{ background: sortBy === v ? C.surfaceHigh : 'none', border: `1px solid ${sortBy === v ? C.purple : C.border}`, borderRadius: 6, padding: '4px 10px', color: sortBy === v ? C.purple : C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ flexShrink: 0, background: sortBy === v ? C.surfaceHigh : 'none', border: `1px solid ${sortBy === v ? C.purple : C.border}`, borderRadius: 6, padding: '4px 10px', color: sortBy === v ? C.purple : C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
             {label}
           </button>
         ))}
+        <button onClick={() => setSortAsc(a => !a)}
+          style={{ flexShrink: 0, background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 10px', color: C.purple, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1 }}>
+          {sortAsc ? '↑' : '↓'}
+        </button>
       </div>
 
       {instances.length === 0 && (
@@ -1755,7 +1759,7 @@ function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowThem
 const HELP_ITEMS = [
   { icon: '⌂', title: 'Now',          body: "This is your live financial picture. Safe to Spend tells you what's actually available after committed bills — it's not your bank balance, it's your real number." },
   { icon: '→', title: 'Ahead',        body: "What's coming up in the next 30 days. Bills are shown as they fall due. Tap ✓ to confirm something happened, ⊘ to skip it, or the row to edit the amount." },
-  { icon: '≡', title: 'History',      body: "Your full transaction record — past and projected. Filter by type or category. Tap any row to edit the amount or delete the transaction." },
+  { icon: '≡', title: 'Flow',      body: "Your full transaction record — past, present, and projected. Filter by type or category. Tap any row to edit the amount or delete the transaction." },
   { icon: '⊙', title: 'Pay Cycles',   body: "Each paycheck is a cycle. You allocate money to envelopes before you spend it. Unspent rolls forward — no resets, no shame." },
   { icon: '□', title: 'Envelopes',    body: "Buckets for variable spending — groceries, fun money, etc. You decide how much goes in each one. When an envelope runs low, you can reassign from another." },
   { icon: '◈', title: 'Goals',        body: "Give a name and a target to something you're saving for. Contribute each cycle. The progress bar moves when you do." },
@@ -1957,7 +1961,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const MAIN_TABS = [
     { id: 'now',          label: 'Now',     icon: '⌂' },
     { id: 'ahead',        label: 'Ahead',   icon: '→' },
-    { id: 'transactions', label: 'History', icon: '≡' },
+    { id: 'transactions', label: 'Flow', icon: '≡' },
   ]
   const isStackActive = ['cycles', 'goals', 'accounts'].includes(activeTab)
 
