@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useT } from './i18n'
 
 const C = {
   bg:         'var(--c-bg)',
@@ -44,13 +45,14 @@ function expandTxLocal(tx, startDate, endDate) {
   return instances
 }
 
-function fmt(val) {
+function fmt(val, locale = 'en-CA') {
   const n = parseFloat(val)
   if (isNaN(n)) return ''
-  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(n)
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(n)
 }
 
 export default function ReconcileModal({ account, transactions, overrides, onSave, onClose }) {
+  const { t, locale } = useT()
   const today = new Date().toISOString().slice(0, 10)
   const baselineDate = account.baseline_date || account.created_at?.slice(0, 10) || today
   const baselineBalance = parseFloat(account.balance) || 0
@@ -196,9 +198,9 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
         <div style={{ padding: '20px 18px 12px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Reconcile {account.name}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{t('reconcile.title', { name: account.name })}</div>
               <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>
-                Transactions since {new Date(baselineDate + 'T00:00:00').toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}
+                {t('reconcile.since', { date: new Date(baselineDate + 'T00:00:00').toLocaleDateString(locale, { month: 'short', day: 'numeric' }) })}
               </div>
             </div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer', padding: '0 4px' }}>×</button>
@@ -207,7 +209,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
           {/* Actual balance input */}
           <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
-              <div style={S.lbl}>Current actual balance</div>
+              <div style={S.lbl}>{t('reconcile.actual_balance')}</div>
               <input
                 style={{ ...S.inp, fontSize: 18, fontWeight: 700, width: '100%' }}
                 type="number"
@@ -219,21 +221,21 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
               />
             </div>
             <div style={{ textAlign: 'right', paddingBottom: 2 }}>
-              <div style={{ fontSize: 10, color: C.textLow }}>Baseline</div>
-              <div style={{ fontSize: 14, color: C.textMid, fontWeight: 600 }}>{fmt(baselineBalance)}</div>
+              <div style={{ fontSize: 10, color: C.textLow }}>{t('reconcile.baseline')}</div>
+              <div style={{ fontSize: 14, color: C.textMid, fontWeight: 600 }}>{fmt(baselineBalance, locale)}</div>
             </div>
           </div>
 
           {/* Live calc strip */}
           <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
             <div style={{ flex: 1, background: C.surfaceHigh, borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-              <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>Expected</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.textMid }}>{fmt(baselineBalance + approvedTotal)}</div>
+              <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>{t('reconcile.expected')}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.textMid }}>{fmt(baselineBalance + approvedTotal, locale)}</div>
             </div>
             <div style={{ flex: 1, background: unexplainedZero ? C.greenBg : C.redBg, borderRadius: 8, padding: '8px 10px', textAlign: 'center', border: `1px solid ${unexplainedZero ? C.green : C.red}` }}>
-              <div style={{ fontSize: 9, color: unexplainedZero ? C.green : C.red, textTransform: 'uppercase', letterSpacing: 1 }}>Unexplained</div>
+              <div style={{ fontSize: 9, color: unexplainedZero ? C.green : C.red, textTransform: 'uppercase', letterSpacing: 1 }}>{t('reconcile.unexplained')}</div>
               <div style={{ fontSize: 14, fontWeight: 700, color: unexplainedZero ? C.green : C.red }}>
-                {unexplainedZero ? '✓ $0' : (unexplained > 0 ? '+' : '') + fmt(unexplained)}
+                {unexplainedZero ? '✓ $0' : (unexplained > 0 ? '+' : '') + fmt(unexplained, locale)}
               </div>
             </div>
           </div>
@@ -243,14 +245,14 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 18px' }}>
           {instances.length === 0 && (
             <div style={{ textAlign: 'center', color: C.textLow, padding: '30px 0', fontSize: 13 }}>
-              No transactions recorded since {baselineDate}
+              {t('reconcile.no_txs', { date: baselineDate })}
             </div>
           )}
 
           {byDate.map(([date, insts]) => (
             <div key={date}>
               <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, padding: '14px 0 6px', fontWeight: 700 }}>
-                {new Date(date + 'T00:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {new Date(date + 'T00:00:00').toLocaleDateString(locale, { weekday: 'short', month: 'short', day: 'numeric' })}
               </div>
               {insts.map(inst => {
                 const state = getState(inst.key, inst.existingState)
@@ -288,7 +290,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
 
                     {/* Amount display */}
                     <div style={{ fontSize: 13, fontWeight: 700, color: isIncome ? C.green : C.red, width: 70, textAlign: 'right', flexShrink: 0 }}>
-                      {isIncome ? '+' : '-'}{fmt(isModified ? (parseFloat(amounts[inst.key]) || 0) : inst.tx.amount)}
+                      {isIncome ? '+' : '-'}{fmt(isModified ? (parseFloat(amounts[inst.key]) || 0) : inst.tx.amount, locale)}
                     </div>
 
                     {/* Skip */}
@@ -308,18 +310,18 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
           {/* New transactions */}
           {newTxs.length > 0 && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 10, color: C.orange, textTransform: 'uppercase', letterSpacing: 2, padding: '10px 0 6px', fontWeight: 700 }}>New transactions</div>
+              <div style={{ fontSize: 10, color: C.orange, textTransform: 'uppercase', letterSpacing: 2, padding: '10px 0 6px', fontWeight: 700 }}>{t('reconcile.new_txs')}</div>
               {newTxs.map((nt, i) => (
                 <div key={i} style={{ marginBottom: 10 }}>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 5, alignItems: 'center' }}>
-                    <input style={{ ...S.inp, flex: 2 }} placeholder="Label" value={nt.label} onChange={e => updateNewTx(i, 'label', e.target.value)} />
+                    <input style={{ ...S.inp, flex: 2 }} placeholder={t('reconcile.label_placeholder')} value={nt.label} onChange={e => updateNewTx(i, 'label', e.target.value)} />
                     <button onClick={() => removeNewTx(i)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 18, flexShrink: 0 }}>×</button>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <select style={{ ...S.inp, flex: 1 }} value={nt.type} onChange={e => updateNewTx(i, 'type', e.target.value)}>
-                      <option value="expense">Expense</option>
-                      <option value="income">Income</option>
-                      <option value="transfer">Transfer</option>
+                      <option value="expense">{t('tx.expense')}</option>
+                      <option value="income">{t('tx.income')}</option>
+                      <option value="transfer">{t('tx.transfer')}</option>
                     </select>
                     <input style={{ ...S.inp, flex: 1 }} type="number" step="0.01" placeholder="0.00" value={nt.amount} onChange={e => updateNewTx(i, 'amount', e.target.value)} />
                     <input style={{ ...S.inp, flex: 1 }} type="date" value={nt.date || today} onChange={e => updateNewTx(i, 'date', e.target.value)} />
@@ -333,7 +335,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
             onClick={addNewTx}
             style={{ width: '100%', background: 'none', border: `1px dashed ${C.border}`, borderRadius: 8, color: C.textLow, fontSize: 12, padding: '10px 0', cursor: 'pointer', fontFamily: 'inherit', marginTop: 8, marginBottom: 16 }}
           >
-            + Add transaction to explain difference
+            {t('reconcile.add_tx')}
           </button>
         </div>
 
@@ -344,7 +346,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
             onClick={() => handleSave(false)}
             disabled={saving || !unexplainedZero}
           >
-            {saving ? 'Saving…' : unexplainedZero ? 'Save reconciliation ✓' : `Remaining: ${fmt(unexplained)}`}
+            {saving ? t('common.saving') : unexplainedZero ? t('reconcile.save') : t('reconcile.remaining', { amount: fmt(unexplained, locale) })}
           </button>
           {!unexplainedZero && (
             <button
@@ -352,7 +354,7 @@ export default function ReconcileModal({ account, transactions, overrides, onSav
               onClick={() => handleSave(true)}
               disabled={saving}
             >
-              Ignore & save
+              {t('reconcile.ignore_save')}
             </button>
           )}
         </div>

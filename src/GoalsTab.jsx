@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import { useT } from './i18n'
 
 const C = {
   bg:         'var(--c-bg)',
@@ -29,8 +30,8 @@ const S = {
   sheetBody: { padding: '16px 18px', overflowY: 'auto' },
 }
 
-function fmt(n) {
-  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(parseFloat(n) || 0)
+function fmt(n, locale = 'en-CA') {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(parseFloat(n) || 0)
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
@@ -40,6 +41,7 @@ const COLORS = [C.purple, C.green, C.blue, C.orange, '#f472b6', '#34d399', '#60a
 
 // ─── GOAL CARD ────────────────────────────────────────────────────────────────
 function GoalCard({ goal, onAddFunds, onDelete }) {
+  const { t, locale } = useT()
   const current = parseFloat(goal.current_amount) || 0
   const target = parseFloat(goal.target_amount) || 0
   const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0
@@ -55,13 +57,13 @@ function GoalCard({ goal, onAddFunds, onDelete }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{goal.name}</div>
             <div style={{ fontSize: 11, color: C.textLow, marginTop: 1 }}>
-              {done ? 'Goal reached!' : `${fmt(remaining)} to go`}
+              {done ? '🎉' : `${fmt(remaining, locale)} ${t('goals.target_label')}`}
             </div>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: done ? C.green : C.text }}>{fmt(current)}</div>
-          <div style={{ fontSize: 10, color: C.textLow }}>of {fmt(target)}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: done ? C.green : C.text }}>{fmt(current, locale)}</div>
+          <div style={{ fontSize: 10, color: C.textLow }}>{t('goals.of_target', { amount: fmt(target, locale) })}</div>
         </div>
       </div>
 
@@ -74,11 +76,11 @@ function GoalCard({ goal, onAddFunds, onDelete }) {
         <span style={{ fontSize: 11, color: barColor, fontWeight: 700 }}>{pct.toFixed(0)}%</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={() => onDelete(goal)} style={{ ...S.btn(C.surfaceHigh, true), padding: '7px 12px', fontSize: 12 }}>
-            Delete
+            {t('goals.delete')}
           </button>
           {!done && (
             <button onClick={() => onAddFunds(goal)} style={{ ...S.btn(barColor), padding: '7px 14px', fontSize: 12 }}>
-              + Add Funds
+              + {t('goals.add_funds_btn')}
             </button>
           )}
         </div>
@@ -89,6 +91,7 @@ function GoalCard({ goal, onAddFunds, onDelete }) {
 
 // ─── ADD FUNDS SHEET ──────────────────────────────────────────────────────────
 function AddFundsSheet({ goal, onClose, onSaved }) {
+  const { t } = useT()
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [date, setDate] = useState(todayStr())
@@ -97,7 +100,7 @@ function AddFundsSheet({ goal, onClose, onSaved }) {
 
   async function handleSave() {
     const amt = parseFloat(amount)
-    if (!amt || amt <= 0) { setErr('Enter a valid amount'); return }
+    if (!amt || amt <= 0) { setErr(t('goals.amount_required')); return }
     setSaving(true)
     setErr(null)
     const { error: contribErr } = await supabase.from('savings_contributions').insert({
@@ -116,30 +119,30 @@ function AddFundsSheet({ goal, onClose, onSaved }) {
       <div style={S.sheetInner} onClick={e => e.stopPropagation()}>
         <div style={S.sheetHeader}>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 15 }}>{goal.emoji} Add Funds</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{goal.emoji} {t('goals.add_funds')}</div>
             <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>{goal.name}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
         <div style={S.sheetBody}>
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Amount (CAD)</div>
+            <div style={S.lbl}>{t('goals.amount_cad')}</div>
             <input
               style={S.inp} type="number" inputMode="decimal" placeholder="0.00"
               value={amount} onChange={e => setAmount(e.target.value)} autoFocus
             />
           </div>
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Date</div>
+            <div style={S.lbl}>{t('tx.date')}</div>
             <input style={S.inp} type="date" value={date} onChange={e => setDate(e.target.value)} />
           </div>
           <div style={{ marginBottom: 20 }}>
-            <div style={S.lbl}>Note (optional)</div>
-            <input style={S.inp} placeholder="e.g. Bonus, tax return…" value={note} onChange={e => setNote(e.target.value)} />
+            <div style={S.lbl}>{t('goals.note')}</div>
+            <input style={S.inp} placeholder={t('goals.note_placeholder')} value={note} onChange={e => setNote(e.target.value)} />
           </div>
           {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{err}</div>}
           <button onClick={handleSave} disabled={saving} style={{ ...S.btn(), width: '100%', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Save Contribution'}
+            {saving ? t('common.saving') : t('goals.save_contribution')}
           </button>
         </div>
       </div>
@@ -149,6 +152,7 @@ function AddFundsSheet({ goal, onClose, onSaved }) {
 
 // ─── NEW GOAL SHEET ───────────────────────────────────────────────────────────
 function NewGoalSheet({ bookId, onClose, onSaved }) {
+  const { t } = useT()
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
   const [current, setCurrent] = useState('')
@@ -158,14 +162,14 @@ function NewGoalSheet({ bookId, onClose, onSaved }) {
   const [err, setErr] = useState(null)
 
   async function handleSave() {
-    if (!name.trim()) { setErr('Enter a goal name'); return }
-    const t = parseFloat(target)
-    if (!t || t <= 0) { setErr('Enter a target amount'); return }
+    if (!name.trim()) { setErr(t('goals.name_required')); return }
+    const tgt = parseFloat(target)
+    if (!tgt || tgt <= 0) { setErr(t('goals.target_required')); return }
     const c = parseFloat(current) || 0
     setSaving(true)
     setErr(null)
     const { error } = await supabase.from('savings_goals').insert({
-      book_id: bookId, name: name.trim(), target_amount: t, current_amount: c, emoji, color,
+      book_id: bookId, name: name.trim(), target_amount: tgt, current_amount: c, emoji, color,
     })
     if (error) { setErr(error.message); setSaving(false); return }
     setSaving(false)
@@ -176,25 +180,25 @@ function NewGoalSheet({ bookId, onClose, onSaved }) {
     <div style={S.sheet} onClick={onClose}>
       <div style={S.sheetInner} onClick={e => e.stopPropagation()}>
         <div style={S.sheetHeader}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>New Savings Goal</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{t('goals.new_goal_sheet')}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
         <div style={S.sheetBody}>
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Goal Name</div>
-            <input style={S.inp} placeholder="e.g. Emergency Fund" value={name} onChange={e => setName(e.target.value)} autoFocus />
+            <div style={S.lbl}>{t('goals.goal_name')}</div>
+            <input style={S.inp} placeholder={t('goals.goal_name_placeholder')} value={name} onChange={e => setName(e.target.value)} autoFocus />
           </div>
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Target Amount (CAD)</div>
+            <div style={S.lbl}>{t('goals.target_amount')}</div>
             <input style={S.inp} type="number" inputMode="decimal" placeholder="0.00" value={target} onChange={e => setTarget(e.target.value)} />
           </div>
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Starting Balance (optional)</div>
+            <div style={S.lbl}>{t('goals.starting_balance')}</div>
             <input style={S.inp} type="number" inputMode="decimal" placeholder="0.00" value={current} onChange={e => setCurrent(e.target.value)} />
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <div style={S.lbl}>Emoji</div>
+            <div style={S.lbl}>{t('goals.emoji')}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {EMOJIS.map(e => (
                 <button key={e} onClick={() => setEmoji(e)}
@@ -206,7 +210,7 @@ function NewGoalSheet({ bookId, onClose, onSaved }) {
           </div>
 
           <div style={{ marginBottom: 20 }}>
-            <div style={S.lbl}>Color</div>
+            <div style={S.lbl}>{t('goals.color')}</div>
             <div style={{ display: 'flex', gap: 10 }}>
               {COLORS.map(col => (
                 <button key={col} onClick={() => setColor(col)}
@@ -217,7 +221,7 @@ function NewGoalSheet({ bookId, onClose, onSaved }) {
 
           {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{err}</div>}
           <button onClick={handleSave} disabled={saving} style={{ ...S.btn(color), width: '100%', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Create Goal'}
+            {saving ? t('common.saving') : t('goals.create')}
           </button>
         </div>
       </div>
@@ -227,6 +231,7 @@ function NewGoalSheet({ bookId, onClose, onSaved }) {
 
 // ─── GOALS TAB ────────────────────────────────────────────────────────────────
 export default function GoalsTab({ bookId }) {
+  const { t, locale } = useT()
   const [goals, setGoals] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
@@ -241,7 +246,7 @@ export default function GoalsTab({ bookId }) {
   useEffect(() => { loadGoals() }, [bookId])
 
   async function handleDelete(goal) {
-    if (!window.confirm(`Delete "${goal.name}"? This cannot be undone.`)) return
+    if (!window.confirm(t('goals.delete_confirm', { name: goal.name }))) return
     await supabase.from('savings_goals').delete().eq('id', goal.id)
     setGoals(prev => prev.filter(g => g.id !== goal.id))
   }
@@ -249,7 +254,7 @@ export default function GoalsTab({ bookId }) {
   const totalSaved = goals.reduce((s, g) => s + (parseFloat(g.current_amount) || 0), 0)
   const totalTarget = goals.reduce((s, g) => s + (parseFloat(g.target_amount) || 0), 0)
 
-  if (loading) return <div style={{ color: C.textLow, textAlign: 'center', padding: 32, fontSize: 13 }}>Loading…</div>
+  if (loading) return <div style={{ color: C.textLow, textAlign: 'center', padding: 32, fontSize: 13 }}>{t('common.loading')}</div>
 
   return (
     <div>
@@ -258,12 +263,12 @@ export default function GoalsTab({ bookId }) {
         <div style={{ ...S.card, background: 'linear-gradient(135deg,#1e1b4b,#0f172a)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>Total Saved</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.green }}>{fmt(totalSaved)}</div>
+              <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>{t('goals.total_saved')}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.green }}>{fmt(totalSaved, locale)}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>Total Target</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{fmt(totalTarget)}</div>
+              <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>{t('goals.total_target')}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{fmt(totalTarget, locale)}</div>
             </div>
           </div>
           {totalTarget > 0 && (
@@ -272,7 +277,7 @@ export default function GoalsTab({ bookId }) {
                 <div style={{ width: `${Math.min(100, (totalSaved / totalTarget) * 100)}%`, height: '100%', background: C.green, borderRadius: 6, transition: 'width 0.3s' }} />
               </div>
               <div style={{ fontSize: 10, color: C.textLow, marginTop: 4, textAlign: 'right' }}>
-                {((totalSaved / totalTarget) * 100).toFixed(0)}% of all goals
+                {t('goals.pct_all', { pct: ((totalSaved / totalTarget) * 100).toFixed(0) })}
               </div>
             </div>
           )}
@@ -283,20 +288,20 @@ export default function GoalsTab({ bookId }) {
       {goals.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
-          <div style={{ color: C.textMid, fontSize: 14, marginBottom: 6 }}>No savings goals yet</div>
-          <div style={{ color: C.textLow, fontSize: 12, marginBottom: 24 }}>Create your first goal to start tracking your progress</div>
+          <div style={{ color: C.textMid, fontSize: 14, marginBottom: 6 }}>{t('goals.no_goals')}</div>
+          <div style={{ color: C.textLow, fontSize: 12, marginBottom: 24 }}>{t('goals.no_goals_hint')}</div>
           <button onClick={() => setShowNew(true)} style={{ ...S.btn(), padding: '11px 24px' }}>
-            Create First Goal
+            {t('goals.create_first')}
           </button>
         </div>
       ) : (
         <>
-          <div style={S.secHead()}>Goals ({goals.length})</div>
+          <div style={S.secHead()}>{t('goals.goals_count', { count: goals.length })}</div>
           {goals.map(g => (
             <GoalCard key={g.id} goal={g} onAddFunds={setAddFundsGoal} onDelete={handleDelete} />
           ))}
           <button onClick={() => setShowNew(true)} style={{ ...S.btn(), width: '100%', marginTop: 4, marginBottom: 16 }}>
-            + New Goal
+            {t('goals.new_goal')}
           </button>
         </>
       )}

@@ -7,6 +7,17 @@ Instructions here apply to this project and are shared with team members.
 ## Project Overview
 React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar has 3 primary tabs (Now, Ahead, Flow) + a StackMenu (☰ in header) for secondary navigation.
 
+## i18n System
+- `src/i18n.jsx` — `LangProvider`, `useT()`, `LANGUAGES` array, full `DICT` for 6 languages
+- Languages: `en_CA` (default), `en_US`, `fr_CA`, `fr_EU`, `es_MX`, `ar` (RTL)
+- `useT()` returns `{ t, lang, setLang, locale, dir, LANGUAGES }`
+- `t(key, vars)` interpolates `{varName}` placeholders; falls back to `en_CA`
+- Language persisted in `localStorage` key `lt_lang`
+- Arabic sets `document.documentElement.dir = 'rtl'`
+- All `fmt(val, locale)` / `fmtAmt(val, locale)` / `fmtDateLabel(ds, t, locale)` / `fmtMonthDay(ds, locale)` accept locale parameter
+- 🌐 Language item in StackMenu → opens `LanguageSheet` bottom sheet
+- App root wrapped in `LangProvider` via `AppWithLang` default export
+
 ## Tech Stack
 - React (Vite), inline styles only — no CSS files or Tailwind
 - Supabase (auth + Postgres)
