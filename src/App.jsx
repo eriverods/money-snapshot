@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
 import CyclesTab from './CyclesTab'
@@ -458,7 +458,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   }, [bookId, today])
 
   const totalCash = accounts
-    .filter(a => a.type !== 'credit' && !a.track_only)
+    .filter(a => a.include_in_safe_to_spend)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   const end14 = new Date(); end14.setDate(end14.getDate() + 14)
@@ -524,7 +524,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   return (
     <div>
       {/* Safe to spend hero */}
-      <div style={{ background: safeToSpend >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${safeToSpend >= 0 ? C.green : C.red}` }}>
+      <div id="guide-safe-to-spend" style={{ background: safeToSpend >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${safeToSpend >= 0 ? C.green : C.red}` }}>
         <div style={{ fontSize: 10, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>
           Safe to spend{nextIncomeDate ? ` · til ${fmtDateLabel(nextIncomeDate)}` : ' · 14d outlook'}
         </div>
@@ -549,7 +549,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
               <div style={{ fontSize: 10, color: a.track_only ? C.orange : C.textLow }}>
-                {a.type}{a.track_only ? ' · tracking only' : ''}
+                {a.type}{a.track_only ? ' · tracking only' : ''}{a.classification ? ` · ${a.classification}` : ''}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -962,11 +962,14 @@ function CalendarTab({ accounts, transactions, overrides }) {
 function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInitAddDone }) {
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
+  const [editClassification, setEditClassification] = useState('')
   const [saving, setSaving] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState('checking')
   const [newBalance, setNewBalance] = useState('')
+  const [newClassification, setNewClassification] = useState('')
+  const [newIncludeSTS, setNewIncludeSTS] = useState(true)
   const [addErr, setAddErr] = useState(null)
 
   useEffect(() => {
@@ -975,7 +978,7 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
 
   async function saveEdit(id) {
     setSaving(true)
-    await supabase.from('cashflow_accounts').update({ name: editName }).eq('id', id)
+    await supabase.from('cashflow_accounts').update({ name: editName, classification: editClassification.trim() || null }).eq('id', id)
     setSaving(false)
     setEditId(null)
     onRefresh()
@@ -986,6 +989,11 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
     onRefresh()
   }
 
+  async function toggleSafeToSpend(account) {
+    await supabase.from('cashflow_accounts').update({ include_in_safe_to_spend: !account.include_in_safe_to_spend }).eq('id', account.id)
+    onRefresh()
+  }
+
   async function addAccount() {
     if (!newName.trim()) { setAddErr('Enter an account name'); return }
     setSaving(true); setAddErr(null)
@@ -993,13 +1001,17 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
       ? -(Math.abs(parseFloat(newBalance) || 0))
       : (parseFloat(newBalance) || 0)
     const { error } = await supabase.from('cashflow_accounts').insert({
+      id: crypto.randomUUID(),
       book_id: bookId, name: newName.trim(), type: newType,
       balance: signedBalance,
       baseline_date: todayStr(),
+      classification: newClassification.trim() || null,
+      include_in_safe_to_spend: newIncludeSTS,
     })
     setSaving(false)
     if (error) { setAddErr(error.message); return }
     setShowAdd(false); setNewName(''); setNewBalance(''); setNewType('checking')
+    setNewClassification(''); setNewIncludeSTS(true)
     onRefresh()
   }
 
@@ -1019,15 +1031,26 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
         return (
           <div key={a.id} style={{ ...S.card, borderLeft: `3px solid ${isNeg ? C.red : C.green}` }}>
             {editId === a.id ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input style={{ ...S.inp, flex: 1 }} value={editName} onChange={e => setEditName(e.target.value)} autoFocus />
-                <button style={S.btn(C.green)} onClick={() => saveEdit(a.id)} disabled={saving}>Save</button>
-                <button style={S.btn(C.surfaceHigh, true)} onClick={() => setEditId(null)}>Cancel</button>
+              <div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input style={{ ...S.inp, flex: 1 }} value={editName} onChange={e => setEditName(e.target.value)} autoFocus placeholder="Account name" />
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={S.lbl}>Classification (optional)</div>
+                  <input style={S.inp} value={editClassification} onChange={e => setEditClassification(e.target.value)} placeholder="e.g. Income, Bills, Fun money" />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={S.btn(C.green)} onClick={() => saveEdit(a.id)} disabled={saving}>Save</button>
+                  <button style={S.btn(C.surfaceHigh, true)} onClick={() => setEditId(null)}>Cancel</button>
+                </div>
               </div>
             ) : (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: isNeg ? C.red : C.green }}>{a.name}</div>
-                <button onClick={() => { setEditId(a.id); setEditName(a.name) }} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer' }}>rename</button>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: isNeg ? C.red : C.green }}>{a.name}</div>
+                  {a.classification && <div style={{ fontSize: 10, color: C.textMid, marginTop: 2 }}>{a.classification}</div>}
+                </div>
+                <button onClick={() => { setEditId(a.id); setEditName(a.name); setEditClassification(a.classification || '') }} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer' }}>edit</button>
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
@@ -1039,17 +1062,25 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
                 Reconcile
               </button>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, flexWrap: 'wrap', gap: 6 }}>
               {a.baseline_date
                 ? <div style={{ fontSize: 10, color: C.textLow }}>Last confirmed: {fmtMonthDay(a.baseline_date)}</div>
                 : <div />
               }
-              <button
-                onClick={() => toggleTrackOnly(a)}
-                style={{ background: 'none', border: `1px solid ${a.track_only ? C.orange : C.border}`, borderRadius: 10, padding: '3px 10px', color: a.track_only ? C.orange : C.textLow, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-              >
-                {a.track_only ? '○ Tracking only' : '● In balance'}
-              </button>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => toggleTrackOnly(a)}
+                  style={{ background: 'none', border: `1px solid ${a.track_only ? C.orange : C.border}`, borderRadius: 10, padding: '3px 10px', color: a.track_only ? C.orange : C.textLow, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                >
+                  {a.track_only ? '○ Tracking only' : '● In balance'}
+                </button>
+                <button
+                  onClick={() => toggleSafeToSpend(a)}
+                  style={{ background: 'none', border: `1px solid ${a.include_in_safe_to_spend ? C.green : C.border}`, borderRadius: 10, padding: '3px 10px', color: a.include_in_safe_to_spend ? C.green : C.textLow, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                >
+                  {a.include_in_safe_to_spend ? '✓ In Safe to Spend' : '✗ Not in Safe to Spend'}
+                </button>
+              </div>
             </div>
           </div>
         )
@@ -1079,12 +1110,25 @@ function AccountsTab({ accounts, bookId, onReconcile, onRefresh, initAdd, onInit
               )}
             </div>
           </div>
+          <div style={{ marginBottom: 10 }}>
+            <div style={S.lbl}>Classification (optional)</div>
+            <input style={S.inp} placeholder="e.g. Income, Bills, Fun money" value={newClassification} onChange={e => setNewClassification(e.target.value)} />
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={S.lbl}>Include in Safe to Spend</div>
+            <button
+              onClick={() => setNewIncludeSTS(v => !v)}
+              style={{ background: 'none', border: `1px solid ${newIncludeSTS ? C.green : C.border}`, borderRadius: 10, padding: '5px 14px', color: newIncludeSTS ? C.green : C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              {newIncludeSTS ? '✓ Yes — counts toward Safe to Spend' : '✗ No — excluded from Safe to Spend'}
+            </button>
+          </div>
           {addErr && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{addErr}</div>}
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={{ ...S.btn(C.green), flex: 1 }} onClick={addAccount} disabled={saving}>
               {saving ? 'Saving…' : 'Add Account'}
             </button>
-            <button style={{ ...S.btn(C.surfaceHigh, true) }} onClick={() => { setShowAdd(false); setAddErr(null) }}>Cancel</button>
+            <button style={{ ...S.btn(C.surfaceHigh, true) }} onClick={() => { setShowAdd(false); setAddErr(null); setNewClassification(''); setNewIncludeSTS(true) }}>Cancel</button>
           </div>
         </div>
       ) : (
@@ -1707,7 +1751,7 @@ function ThemePicker({ prefs, onSave, onClose }) {
 }
 
 // ─── STACK MENU ───────────────────────────────────────────────────────────────
-function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onSignOut, onClose }) {
+function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onStartFromScratch, onSignOut, onClose }) {
   const navItems = [
     { id: 'cycles',   icon: '⊙', label: 'Cycles',   desc: 'Plan spending with budget envelopes per pay period' },
     { id: 'goals',    icon: '◈', label: 'Goals',    desc: 'Named savings targets with progress tracking' },
@@ -1745,6 +1789,10 @@ function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowThem
               {label}
             </button>
           ))}
+          <button onClick={() => { onStartFromScratch(); onClose() }}
+            style={{ display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '13px 4px', color: C.orange, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', borderBottom: `1px solid ${C.border}` }}>
+            🧹 Start from Scratch
+          </button>
           <button onClick={onSignOut}
             style={{ display: 'flex', alignItems: 'center', width: '100%', background: 'none', border: 'none', padding: '13px 4px', color: C.red, fontFamily: 'inherit', fontSize: 14, cursor: 'pointer', marginBottom: 8 }}>
             Sign Out
@@ -1752,6 +1800,131 @@ function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowThem
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── FIRST RUN GUIDE ──────────────────────────────────────────────────────────
+const GUIDE_STEPS = [
+  { id: 'guide-safe-to-spend', title: 'Your real number',
+    body: "Safe to Spend is what's actually yours after the bills that are coming — not your bank balance." },
+  { id: 'guide-tabs', title: 'Three views',
+    body: "Now is today. Ahead is what's coming. Flow is every transaction, past and projected." },
+  { id: 'guide-fab', title: 'Add anything',
+    body: 'Tap + to add a transaction, a bill, money to a goal, or a new book.' },
+  { id: 'guide-menu', title: 'Everything else',
+    body: 'Cycles, Goals, Accounts, appearance, and "Start from Scratch" live in this menu.' },
+  { id: 'guide-help', title: 'Lost? Tap here',
+    body: 'This ⓘ reopens the help anytime — and you can replay this tour from here.' },
+]
+
+function FirstRunGuide({ onClose }) {
+  const [step, setStep] = useState(0)
+  const [rect, setRect] = useState(null)
+
+  useEffect(() => {
+    function measure() {
+      const el = document.getElementById(GUIDE_STEPS[step]?.id)
+      setRect(el ? el.getBoundingClientRect() : null)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [step])
+
+  function finish() {
+    localStorage.setItem('lt_guide_seen', '1')
+    onClose()
+  }
+
+  function next() {
+    if (step < GUIDE_STEPS.length - 1) setStep(s => s + 1)
+    else finish()
+  }
+
+  function back() { if (step > 0) setStep(s => s - 1) }
+
+  const PAD = 6
+  const CARD_W = Math.min(340, window.innerWidth - 32)
+  const VH = window.innerHeight
+
+  const highlightStyle = rect ? {
+    position: 'fixed',
+    top: rect.top - PAD,
+    left: rect.left - PAD,
+    width: rect.width + PAD * 2,
+    height: rect.height + PAD * 2,
+    borderRadius: 12,
+    border: `2px solid ${C.purple}`,
+    boxShadow: `0 0 0 9999px rgba(0,0,0,0.72), 0 0 18px 2px ${C.purple}44`,
+    pointerEvents: 'none',
+    zIndex: 302,
+  } : null
+
+  let tooltipTop
+  if (rect) {
+    const midY = rect.top + rect.height / 2
+    tooltipTop = midY < VH / 2 ? rect.bottom + PAD + 10 : null
+  }
+  const tooltipBottom = (rect && tooltipTop == null) ? (VH - rect.top + PAD + 10) : undefined
+  const tooltipLeft = rect ? Math.min(Math.max(16, rect.left + rect.width / 2 - CARD_W / 2), window.innerWidth - CARD_W - 16) : 16
+
+  return (
+    <>
+      {/* Backdrop — clicking dismisses */}
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.72)' }}
+        onClick={finish}
+      />
+
+      {/* Highlight ring */}
+      {highlightStyle && <div style={highlightStyle} />}
+
+      {/* Tooltip card */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'fixed',
+          zIndex: 303,
+          width: CARD_W,
+          left: tooltipLeft,
+          ...(tooltipTop != null ? { top: tooltipTop } : { bottom: tooltipBottom }),
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 14,
+          padding: '16px 16px 14px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 5 }}>{GUIDE_STEPS[step].title}</div>
+        <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 14 }}>{GUIDE_STEPS[step].body}</div>
+
+        {/* Progress dots */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 14 }}>
+          {GUIDE_STEPS.map((_, i) => (
+            <div key={i} style={{ width: i === step ? 16 : 6, height: 6, borderRadius: 3, background: i === step ? C.purple : C.border, transition: 'width 0.2s' }} />
+          ))}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={finish} style={{ background: 'none', border: 'none', color: C.textLow, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer', padding: '6px 0', marginRight: 'auto' }}>
+            Skip
+          </button>
+          {step > 0 && (
+            <button onClick={back} style={{ background: C.surfaceHigh, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 16px', color: C.textMid, fontFamily: 'inherit', fontSize: 12, cursor: 'pointer' }}>
+              Back
+            </button>
+          )}
+          <button onClick={next} style={{ background: C.purple, border: 'none', borderRadius: 8, padding: '8px 18px', color: 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            {step === GUIDE_STEPS.length - 1 ? 'Done' : 'Next'}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -1767,7 +1940,7 @@ const HELP_ITEMS = [
   { icon: 'i', title: 'Projected vs Confirmed', body: "Italic = hasn't happened yet. Bold = confirmed. Strikethrough = skipped. The app tracks the difference so you always know what's real vs. what's expected." },
 ]
 
-function HelpSheet({ onClose }) {
+function HelpSheet({ onClose, onReplayGuide }) {
   return (
     <div style={sheetStyle} onClick={onClose}>
       <div style={{ ...sheetInner, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
@@ -1779,6 +1952,12 @@ function HelpSheet({ onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ padding: '12px 18px 32px', overflowY: 'auto', flex: 1 }}>
+          <button
+            onClick={onReplayGuide}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: `color-mix(in srgb, ${C.purple} 10%, transparent)`, border: `1px solid ${C.border}`, borderRadius: 10, padding: '11px 14px', color: C.purple, fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 14 }}
+          >
+            <span style={{ fontSize: 15 }}>↻</span> Replay the walkthrough
+          </button>
           {HELP_ITEMS.map(item => (
             <div key={item.title} style={{ display: 'flex', gap: 14, padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
               <div style={{ fontSize: 20, flexShrink: 0, width: 28, textAlign: 'center', paddingTop: 2, color: C.purple }}>{item.icon}</div>
@@ -1794,13 +1973,94 @@ function HelpSheet({ onClose }) {
   )
 }
 
+// ─── START FROM SCRATCH SHEET ─────────────────────────────────────────────────
+function StartFromScratchSheet({ book, onNewBook, onClose, onResetDone }) {
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [err, setErr] = useState(null)
+  const [success, setSuccess] = useState(false)
+
+  async function handleReset() {
+    setDeleting(true); setErr(null)
+    const { error } = await supabase.rpc('reset_book_data', { p_book_id: book.id })
+    setDeleting(false)
+    if (error) { setErr(error.message); return }
+    setSuccess(true)
+    setTimeout(() => { onClose(); onResetDone() }, 1200)
+  }
+
+  return (
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={{ ...sheetInner, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+        <div style={sheetHeader}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Start from Scratch</div>
+            <div style={{ fontSize: 11, color: C.textLow, marginTop: 2 }}>{book.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '18px 18px 36px', overflowY: 'auto' }}>
+
+          {/* Option A: New book */}
+          <div style={{ ...S.card, marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Create a new book</div>
+            <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 14 }}>
+              Keep this book as-is and start a fresh one alongside it. Nothing is deleted.
+            </div>
+            <button style={{ ...S.btn(), width: '100%' }} onClick={onNewBook}>
+              Open book picker →
+            </button>
+          </div>
+
+          {/* Option B: Delete everything in this book */}
+          <div style={{ ...S.card, border: `1px solid ${deleteConfirm ? C.red : C.border}` }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: C.red }}>Delete everything in this book</div>
+            <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.6, marginBottom: 14 }}>
+              Permanently removes all accounts, transactions, cycles, envelopes, goals, and categories in <strong>{book.name}</strong>. The book itself stays — it will just be empty. This cannot be undone.
+            </div>
+
+            {success ? (
+              <div style={{ fontSize: 13, color: C.green, fontWeight: 600, textAlign: 'center', padding: '8px 0' }}>
+                ✓ Book cleared successfully
+              </div>
+            ) : !deleteConfirm ? (
+              <button
+                style={{ width: '100%', background: 'none', border: `1px solid ${C.red}`, borderRadius: 8, padding: '10px 0', color: C.red, fontFamily: 'inherit', fontSize: 13, cursor: 'pointer' }}
+                onClick={() => setDeleteConfirm(true)}
+              >
+                Delete everything in this book…
+              </button>
+            ) : (
+              <div style={{ background: C.redBg, border: `1px solid ${C.red}`, borderRadius: 10, padding: '14px' }}>
+                <div style={{ fontSize: 13, color: C.red, fontWeight: 600, marginBottom: 4 }}>Are you sure?</div>
+                <div style={{ fontSize: 11, color: C.textMid, marginBottom: 12 }}>
+                  Tap confirm to permanently delete all data in <strong>{book.name}</strong>. The book will remain but be empty.
+                </div>
+                {err && <div style={{ fontSize: 11, color: C.red, marginBottom: 10 }}>{err}</div>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={{ ...S.btn(C.red), flex: 1 }} onClick={handleReset} disabled={deleting}>
+                    {deleting ? 'Deleting…' : 'Yes, delete all data'}
+                  </button>
+                  <button style={S.btn(C.surfaceHigh, true)} onClick={() => { setDeleteConfirm(false); setErr(null) }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── FLOATING ACTION BUTTON ───────────────────────────────────────────────────
-function FAB({ onTransaction, onBill, onGoal }) {
+function FAB({ onTransaction, onBill, onGoal, onNewBook }) {
   const [open, setOpen] = useState(false)
   const actions = [
-    { label: 'Add Transaction', color: C.purple, fn: onTransaction },
-    { label: 'Add Bill',        color: C.orange, fn: onBill },
-    { label: 'Save to Goal',    color: C.green,  fn: onGoal },
+    { label: 'Add Transaction', color: C.purple,  fn: onTransaction },
+    { label: 'Add Bill',        color: C.orange,  fn: onBill },
+    { label: 'Save to Goal',    color: C.green,   fn: onGoal },
+    { label: 'New Book',        color: C.textMid, fn: onNewBook },
   ]
   return (
     <>
@@ -1819,6 +2079,7 @@ function FAB({ onTransaction, onBill, onGoal }) {
           </div>
         )}
         <button
+          id="guide-fab"
           onClick={() => setOpen(v => !v)}
           style={{ width: 52, height: 52, borderRadius: '50%', background: C.purple, border: 'none', color: 'var(--c-btn-text)', fontSize: 26, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,0,0,0.5)', fontFamily: 'inherit', transform: open ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s', pointerEvents: 'auto' }}
         >
@@ -1848,6 +2109,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [showStack, setShowStack] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [showScratch, setShowScratch] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const [prefs, setPrefs] = useState(() => {
     try {
       const c = localStorage.getItem('lt_prefs')
@@ -1893,6 +2156,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     if (!localStorage.getItem(key)) setShowCheckin(true)
   }, [today])
 
+  const firstLoad = useRef(true)
   const loadData = useCallback(async () => {
     const [{ data: accts }, { data: txs }, { data: cats }] = await Promise.all([
       supabase.from('cashflow_accounts').select('*').eq('book_id', book.id).order('name'),
@@ -1917,6 +2181,10 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       setCategories(cats)
     }
     setLoading(false)
+    if (firstLoad.current) {
+      firstLoad.current = false
+      if (!localStorage.getItem('lt_guide_seen')) setShowGuide(true)
+    }
   }, [book.id])
 
   useEffect(() => { loadData() }, [loadData])
@@ -1982,11 +2250,11 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <button onClick={() => setShowHelp(true)} title="How it works"
+            <button id="guide-help" onClick={() => setShowHelp(true)} title="How it works"
               style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 14, cursor: 'pointer', padding: '4px 7px', lineHeight: 1, fontFamily: 'inherit' }}>
               ⓘ
             </button>
-            <button onClick={() => setShowStack(true)} title="More"
+            <button id="guide-menu" onClick={() => setShowStack(true)} title="More"
               style={{ background: 'none', border: 'none', color: isStackActive ? C.purple : C.textLow, fontSize: 17, cursor: 'pointer', padding: '4px 7px', lineHeight: 1 }}>
               ☰
             </button>
@@ -2024,7 +2292,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
       {/* Body */}
       <div style={{ padding: '14px 16px 0' }}>
-        {showCheckin && (
+        {showCheckin && !showGuide && (
           <CheckInBanner
             onReconcile={() => {
               setShowCheckin(false)
@@ -2066,7 +2334,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       </div>
 
       {/* Bottom tab bar */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div id="guide-tabs" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {MAIN_TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
             style={{ flex: 1, background: 'none', border: 'none', padding: '9px 0 7px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 0 }}>
@@ -2082,6 +2350,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
         onTransaction={() => setShowAddTx(true)}
         onBill={() => setShowAddBill(true)}
         onGoal={() => setActiveTab('goals')}
+        onNewBook={() => setShowBookPicker(true)}
       />
 
       {/* Theme picker */}
@@ -2141,10 +2410,25 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           onShowNotif={() => setShowNotifSheet(true)}
           onShowShare={() => setShowShareSheet(true)}
           onShowTheme={() => setShowThemePicker(true)}
+          onStartFromScratch={() => { setShowStack(false); setShowScratch(true) }}
           onSignOut={onSignOut}
           onClose={() => setShowStack(false)} />
       )}
-      {showHelp && <HelpSheet onClose={() => setShowHelp(false)} />}
+      {showScratch && (
+        <StartFromScratchSheet
+          book={book}
+          onNewBook={() => { setShowScratch(false); setShowBookPicker(true) }}
+          onClose={() => setShowScratch(false)}
+          onResetDone={loadData}
+        />
+      )}
+      {showHelp && (
+        <HelpSheet
+          onClose={() => setShowHelp(false)}
+          onReplayGuide={() => { setShowHelp(false); setShowGuide(true) }}
+        />
+      )}
+      {showGuide && <FirstRunGuide onClose={() => setShowGuide(false)} />}
     </div>
   )
 }

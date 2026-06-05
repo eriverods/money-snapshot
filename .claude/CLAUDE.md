@@ -65,8 +65,11 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Accounts Tab
 - `type` column on `cashflow_accounts` — migration in `supabase/migrations/20260531_add_account_type.sql`
 - `track_only` boolean column — migration in `supabase/migrations/20260531_add_account_track_only.sql`
+- `include_in_safe_to_spend` boolean (default true) + `classification` text — migration in `supabase/migrations/20260604_account_safe_to_spend_and_classification.sql`
 - **Credit accounts**: balance is stored as negative (debt). UI negates the entered value automatically when type=credit
-- **Tracking-only accounts**: excluded from totalCash, running balance in Agenda, and Calendar projections. Toggle per card ("● In balance" / "○ Tracking only"). OverviewTab shows "tracking only" label.
+- **Tracking-only accounts**: excluded from running balance in Ahead/Calendar projections (still uses `a.type !== 'credit' && !a.track_only`). Independent of Safe to Spend.
+- **Safe to Spend**: now driven exclusively by `include_in_safe_to_spend` flag (OverviewTab `totalCash`). Toggle per card ("✓ In Safe to Spend" / "✗ Not in Safe to Spend"). Default true; migration sets false for existing credit/track-only accounts.
+- **Classification**: optional free-form label (e.g. "Income", "Bills", "Fun money"). Shown on card and in OverviewTab account list. Editable in the rename/edit panel.
 - `initAdd` / `onInitAddDone` props trigger the add form open from parent (used by FAB)
 
 ## Multiple Books Feature
@@ -79,9 +82,16 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Bottom Navigation
 - 3 main tabs: Now (⌂), Ahead (→), Flow (≡)
 - Header ☰ button → opens `StackMenu` bottom sheet
-- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Notifications 🔔, Share Book 👥, Sign Out
+- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Appearance 🎨, Notifications 🔔, Share Book 👥, 🧹 Start from Scratch, Sign Out
 - Tapping Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
-- Header also has ⓘ (opens HelpSheet) and ◐ (theme picker)
+- Header also has ⓘ (opens HelpSheet)
+
+## Start from Scratch
+- 🧹 in StackMenu → opens `StartFromScratchSheet`
+- Two branches: **Create a new book** (opens book picker, nothing deleted) or **Delete everything in this book** (destructive, two-tap confirm)
+- Delete calls `reset_book_data(p_book_id)` RPC — wipes accounts, transactions, overrides, cycles, envelopes, templates, goals, contributions, categories for the current book. Book itself remains.
+- Migration: `supabase/migrations/20260604_reset_book_data.sql`
+- After reset, `loadData()` is called to refresh the UI to empty state
 
 ## Categories Feature
 - `categories` table: `id, book_id, name, sort_order, is_default, archived`
@@ -111,7 +121,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 
 ## Floating Action Button (FAB)
 - `FAB` component in `src/App.jsx`, fixed position above tab bar (`bottom: calc(76px + env(safe-area-inset-bottom))`, `right: 16px`, `z-index: 150`)
-- Tapping `+` opens 3 action buttons: Add Transaction (opens AddTxModal), Add Bill (opens AddTxModal pre-set to expense+recurring), Save to Goal (navigates to goals tab)
+- Tapping `+` opens 4 action buttons: Add Transaction, Add Bill, Save to Goal, New Book (opens book picker)
 - Backdrop div closes menu on outside tap
 
 ## Tab Descriptions
@@ -123,9 +133,21 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Accounts (◎)**: AccountsTab (via StackMenu) — account management and reconcile
 
 ## HelpSheet (ⓘ)
-- Opens from ⓘ icon in header
+- Opens from ⓘ icon in header (`id="guide-help"`)
 - Plain-language explanations of each feature (ADHD-friendly, calm friend tone)
 - No jargon, warm language
+- "↻ Replay the walkthrough" button at top → calls `onReplayGuide` prop → closes sheet + opens `FirstRunGuide`
+
+## First-Run Guide (coachmarks)
+- `FirstRunGuide` component in `src/App.jsx` — spotlight tour with highlight ring + tooltip card
+- 5 steps: Safe to Spend hero, tab bar, FAB, ☰ menu, ⓘ help
+- Target elements tagged with ids: `guide-safe-to-spend`, `guide-tabs`, `guide-fab`, `guide-menu`, `guide-help`
+- Spotlight via `boxShadow: '0 0 0 9999px rgba(0,0,0,0.72), ...'` on a fixed-position highlight div
+- Tooltip positions below target if in top half of screen, above if in bottom half; clamped to viewport
+- Next/Back/Skip/Done buttons + progress dot row
+- Persisted in `localStorage` key `lt_guide_seen` — never shows again after first completion/skip
+- Triggered in `MainApp.loadData()` on the very first data load (via `firstLoad` ref); suppressed while guide is open (`showCheckin && !showGuide`)
+- Replayable from HelpSheet via `onReplayGuide` prop
 
 ## Mobile Layout
 - `S.root` paddingBottom: `calc(80px + env(safe-area-inset-bottom))` — accounts for tab bar + home indicator
