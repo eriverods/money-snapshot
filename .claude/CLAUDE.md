@@ -59,8 +59,8 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Home Tab (OverviewTab) ✓ Redesigned
 `OverviewTab` in `src/App.jsx` accepts `{ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles }`.
 - **Safe to spend** hero card: `totalCash − bills before next income occurrence` (14d lookahead)
-- **Accounts** list: tap any row to open ReconcileModal for that account
-- **14-day calendar grid**: 7-col × 2-row, each cell shows day net flow; payday cell highlighted green, today purple
+- **Accounts** box: grouped into Debit / Savings / Credit sections (only groups with accounts shown), each with its own subtotal — no combined grand total. Tap any row to open ReconcileModal for that account
+- **14-day calendar grid**: 7-col × 2-row, each cell shows day net flow; payday cell highlighted green, today purple. Tap a day to open a bottom sheet listing that date's transactions + day net. All calendar date strings use local time via `toDateStr()` (not UTC `toISOString`) so amounts land on the correct day in every timezone
 - **Bills til next payday**: expenses due before the next income transaction, with running total
 - **Tight envelopes**: loads active `cycle_envelopes` from Supabase (cycle covering today), shows any at ≥90% usage with "Reassign →" → navigates to Cycles tab
 
@@ -137,7 +137,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 
 ## Tab Descriptions
 - **Now (⌂)**: OverviewTab — safe-to-spend hero, accounts, today's activity, tight envelopes, upcoming bills
-- **Ahead (→)**: AheadTab — pay cycle countdown, next 30-day timeline grouped by date, tap to approve/skip/edit amount
+- **Ahead (→)**: AheadTab — pay cycle countdown, next 30-day timeline grouped by date, tap to approve/skip/edit amount. Per-day running balance is seeded from spendable accounts only (`include_in_safe_to_spend`) and always shows 2 decimals (`fmt`, not `fmtAmt`)
 - **Flow (≡)**: TransactionsTab — full instance list past 90d + future 30d, sort by date/amount with asc/desc toggle (default: date desc), filter by type/account/category, tap to edit via EditTxSheet
 - **Cycles (⊙)**: CyclesTab (via StackMenu) — pay cycle management and envelope budgets
 - **Goals (◈)**: GoalsTab (via StackMenu) — savings goals with progress bars

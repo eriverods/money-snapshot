@@ -49,7 +49,16 @@ function fmtAmt(val) {
   return fmt(n)
 }
 
-function todayStr() { return new Date().toISOString().slice(0, 10) }
+// Local calendar date as YYYY-MM-DD (avoids the UTC off-by-one that
+// toISOString() introduces in the evening / non-UTC timezones)
+function toDateStr(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function todayStr() { return toDateStr(new Date()) }
 
 function parseDateLocal(ds) { return new Date(ds + 'T00:00:00') }
 
@@ -80,7 +89,7 @@ function expandTx(tx, startDate, endDate) {
   let cur = new Date(txStart), safety = 0
   while (cur <= we && safety++ < 500) {
     if (txEnd && cur > txEnd) break
-    if (cur >= ws) out.push(cur.toISOString().slice(0, 10))
+    if (cur >= ws) out.push(toDateStr(cur))
     if (tx.recurrence === 'weekly')        cur.setDate(cur.getDate() + 7)
     else if (tx.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
     else if (tx.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
@@ -445,6 +454,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   const { t, locale } = useT()
   const today = todayStr()
   const [envelopes, setEnvelopes] = useState([])
+  const [selectedDate, setSelectedDate] = useState(null)
 
   useEffect(() => {
     async function loadEnvelopes() {
@@ -470,7 +480,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   const end14 = new Date(); end14.setDate(end14.getDate() + 14)
-  const end14str = end14.toISOString().slice(0, 10)
+  const end14str = toDateStr(end14)
 
   // Find next income date within 14 days
   const nextIncomeDate = useMemo(() => {
@@ -509,7 +519,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
     )
     return Array.from({ length: 14 }, (_, i) => {
       const d = new Date(); d.setDate(d.getDate() + i)
-      const ds = d.toISOString().slice(0, 10)
+      const ds = toDateStr(d)
       let net = 0
       for (const tx of transactions) {
         if (!expandTx(tx, ds, ds).length) continue
@@ -554,20 +564,35 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
             <button onClick={onGoToAccounts} style={{ ...S.btn(), fontSize: 12, padding: '8px 16px' }}>{t('overview.add_first')}</button>
           </div>
         )}
-        {accounts.map((a, i) => (
-          <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < accounts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
-              <div style={{ fontSize: 10, color: a.track_only ? C.orange : C.textLow }}>
-                {a.type}{a.track_only ? ` · ${t('overview.tracking_only')}` : ''}{a.classification ? ` · ${a.classification}` : ''}
+        {[
+          { key: 'debit',   labelKey: 'overview.debit',   accts: accounts.filter(a => a.type !== 'credit' && a.type !== 'savings') },
+          { key: 'savings', labelKey: 'overview.savings', accts: accounts.filter(a => a.type === 'savings') },
+          { key: 'credit',  labelKey: 'overview.credit',  accts: accounts.filter(a => a.type === 'credit') },
+        ].filter(g => g.accts.length > 0).map((g, gi) => {
+          const subtotal = g.accts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
+          return (
+            <div key={g.key} style={{ marginTop: gi === 0 ? 0 : 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700 }}>{t(g.labelKey)}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: subtotal >= 0 ? C.green : C.red }}>{fmt(subtotal, locale)}</span>
               </div>
+              {g.accts.map((a, i) => (
+                <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < g.accts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
+                    <div style={{ fontSize: 10, color: a.track_only ? C.orange : C.textLow }}>
+                      {a.type}{a.track_only ? ` · ${t('overview.tracking_only')}` : ''}{a.classification ? ` · ${a.classification}` : ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance, locale) || '--'}</div>
+                    <span style={{ fontSize: 10, color: C.purple }}>↺</span>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance, locale) || '--'}</div>
-              <span style={{ fontSize: 10, color: C.purple }}>↺</span>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Today's activity */}
@@ -602,7 +627,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
         <div style={{ ...S.lbl, marginBottom: 10 }}>{t('overview.next_14')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
           {calendarDays.map(({ ds, day, wday, net, isToday, isPayday }) => (
-            <div key={ds} style={{ background: isToday ? C.surfaceHigh : 'transparent', borderRadius: 7, padding: '5px 3px', border: isToday ? `1px solid ${C.purple}` : isPayday ? `1px solid ${C.green}` : `1px solid ${C.border}`, textAlign: 'center', minHeight: 52 }}>
+            <div key={ds} onClick={() => setSelectedDate(ds)} style={{ background: isToday ? C.surfaceHigh : 'transparent', borderRadius: 7, padding: '5px 3px', border: isToday ? `1px solid ${C.purple}` : isPayday ? `1px solid ${C.green}` : `1px solid ${C.border}`, textAlign: 'center', minHeight: 52, cursor: 'pointer' }}>
               <div style={{ fontSize: 8, color: isToday ? C.purple : isPayday ? C.green : C.textLow }}>{wday}</div>
               <div style={{ fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? C.purple : isPayday ? C.green : C.textMid }}>{day}</div>
               {net !== 0 && (
@@ -672,6 +697,49 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
           })}
         </div>
       )}
+
+      {/* Day detail sheet — transactions for a tapped calendar date */}
+      {selectedDate && (() => {
+        const items = transactions.flatMap(tx => {
+          if (!expandTx(tx, selectedDate, selectedDate).length) return []
+          const ov = getOverride(overrides, tx.id, selectedDate)
+          if (ov?.action === 'skipped') return []
+          const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
+          return [{ tx, amt }]
+        })
+        const dayNet = items.reduce((s, i) => s + (i.tx.type === 'income' ? i.amt : -i.amt), 0)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 800 }} onClick={() => setSelectedDate(null)}>
+            <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: C.surface, borderRadius: '20px 20px 0 0', padding: '20px 18px calc(28px + env(safe-area-inset-bottom))', maxHeight: '70vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>{fmtDateLabel(selectedDate, t, locale)}</div>
+                <button onClick={() => setSelectedDate(null)} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
+              </div>
+              {items.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: C.textLow, fontSize: 13 }}>{t('overview.no_activity')}</div>
+              ) : (
+                <>
+                  {items.map(({ tx, amt }, i) => (
+                    <div key={`${tx.id}:${i}`} style={{ ...S.row, borderBottom: i < items.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600 }}>{tx.label}</div>
+                        <div style={{ fontSize: 10, color: C.textLow }}>{tx.account}{tx.category ? ` · ${tx.category}` : ''}</div>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: tx.type === 'income' ? C.green : C.red }}>
+                        {tx.type === 'income' ? '+' : '−'}{fmt(amt, locale)}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 12, color: C.textLow }}>{t('overview.total')}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: dayNet >= 0 ? C.green : C.red }}>{dayNet > 0 ? '+' : ''}{fmt(dayNet, locale)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -681,7 +749,7 @@ function AheadTab({ accounts, transactions, overrides, onOverrideChange, bookId,
   const { t, locale } = useT()
   const today = todayStr()
   const end30 = new Date(); end30.setDate(end30.getDate() + 30)
-  const endStr = end30.toISOString().slice(0, 10)
+  const endStr = toDateStr(end30)
 
   const [cycle, setCycle] = useState(null)
   const [editSheet, setEditSheet] = useState(null) // { tx, date, override }
@@ -692,7 +760,8 @@ function AheadTab({ accounts, transactions, overrides, onOverrideChange, bookId,
       .then(({ data }) => setCycle(data?.[0] || null))
   }, [bookId, today])
 
-  const totalCash = accounts.filter(a => a.type !== 'credit' && !a.track_only)
+  // Running balance is seeded from spendable accounts only (Safe to Spend set)
+  const totalCash = accounts.filter(a => a.include_in_safe_to_spend)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
   const upcoming = useMemo(() => {
@@ -804,7 +873,7 @@ function AheadTab({ accounts, transactions, overrides, onOverrideChange, bookId,
               <span>{isToday ? t('date.today_marker') : fmtDateLabel(date, t, locale)}</span>
               {endBal != null && (
                 <span style={{ fontSize: 11, fontWeight: 700, color: isLow ? C.orange : endBal >= 0 ? C.green : C.red }}>
-                  {isLow && '⚠ '}{fmtAmt(endBal, locale)}
+                  {isLow && '⚠ '}{fmt(endBal, locale)}
                 </span>
               )}
             </div>
@@ -864,7 +933,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
   const firstDay = new Date(year, month, 1)
   const lastDay = new Date(year, month + 1, 0)
   const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`
-  const monthEnd = lastDay.toISOString().slice(0, 10)
+  const monthEnd = toDateStr(lastDay)
 
   const totalCash = accounts
     .filter(a => a.type !== 'credit' && !a.track_only)
@@ -894,7 +963,7 @@ function CalendarTab({ accounts, transactions, overrides }) {
     const end = new Date(year, month + 1, 0)
     const start = new Date(Math.max(new Date(today + 'T00:00:00'), new Date(year, month, 1)))
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const ds = d.toISOString().slice(0, 10)
+      const ds = toDateStr(d)
       bal += (dailyNet[ds] || 0)
       result[ds] = bal
     }
@@ -1161,8 +1230,8 @@ function TransactionsTab({ accounts, transactions, overrides, bookId, onRefresh,
   const today = todayStr()
   const past90 = new Date(); past90.setDate(past90.getDate() - 90)
   const future30 = new Date(); future30.setDate(future30.getDate() + 30)
-  const startStr = past90.toISOString().slice(0, 10)
-  const endStr = future30.toISOString().slice(0, 10)
+  const startStr = toDateStr(past90)
+  const endStr = toDateStr(future30)
 
   const [filterType, setFilterType] = useState('')
   const [filterAccount, setFilterAccount] = useState('')
