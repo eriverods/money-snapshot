@@ -34,17 +34,19 @@ const S = {
 }
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
-function fmt(val, locale = 'en-CA') {
+// Currency is always formatted with a fixed symbol ($) and never changes with
+// the selected language — locale arg kept for call-site compatibility but unused.
+function fmt(val) {
   const n = parseFloat(val)
   if (isNaN(n) || val === '' || val == null) return ''
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(n)
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(n)
 }
 
-function fmtAmt(val, locale = 'en-CA') {
+function fmtAmt(val) {
   const n = parseFloat(val) || 0
   const abs = Math.abs(n)
-  if (abs >= 10000) return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD', maximumFractionDigits: 1 }).format(n)
-  return fmt(n, locale)
+  if (abs >= 10000) return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 1 }).format(n)
+  return fmt(n)
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
@@ -2141,7 +2143,10 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [overrides, setOverrides] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('now')
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('lt_active_tab')
+    return ['now', 'ahead', 'transactions', 'cycles', 'goals', 'accounts'].includes(saved) ? saved : 'now'
+  })
   const [reconcileAccount, setReconcileAccount] = useState(null)
   const [showAddTx, setShowAddTx] = useState(false)
   const [showAddBill, setShowAddBill] = useState(false)
@@ -2170,6 +2175,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
 
   // Apply theme attrs immediately on mount and whenever prefs change
   useEffect(() => { applyThemeAttrs(prefs) }, [prefs])
+
+  // Persist the active tab so a refresh / app reopen returns the user to it
+  useEffect(() => { localStorage.setItem('lt_active_tab', activeTab) }, [activeTab])
 
   // Load user preferences from DB after session resolves
   useEffect(() => {

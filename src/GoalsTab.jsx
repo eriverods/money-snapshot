@@ -30,8 +30,8 @@ const S = {
   sheetBody: { padding: '16px 18px', overflowY: 'auto' },
 }
 
-function fmt(n, locale = 'en-CA') {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(parseFloat(n) || 0)
+function fmt(n) {
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(parseFloat(n) || 0)
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }
@@ -57,7 +57,7 @@ function GoalCard({ goal, onAddFunds, onDelete }) {
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: C.text }}>{goal.name}</div>
             <div style={{ fontSize: 11, color: C.textLow, marginTop: 1 }}>
-              {done ? '🎉' : `${fmt(remaining, locale)} ${t('goals.target_label')}`}
+              {done ? t('goals.complete') : `${fmt(remaining, locale)} ${t('goals.target_label')}`}
             </div>
           </div>
         </div>
@@ -287,7 +287,7 @@ export default function GoalsTab({ bookId }) {
       {/* Goal cards */}
       {goals.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+          <div style={{ fontSize: 40, marginBottom: 12, color: C.purple }}>◈</div>
           <div style={{ color: C.textMid, fontSize: 14, marginBottom: 6 }}>{t('goals.no_goals')}</div>
           <div style={{ color: C.textLow, fontSize: 12, marginBottom: 24 }}>{t('goals.no_goals_hint')}</div>
           <button onClick={() => setShowNew(true)} style={{ ...S.btn(), padding: '11px 24px' }}>

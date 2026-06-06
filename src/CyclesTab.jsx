@@ -36,8 +36,8 @@ const S = {
   sheetHeader: { padding: '18px 18px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 },
 }
 
-function fmt(n, locale = 'en-CA') {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(parseFloat(n) || 0)
+function fmt(n) {
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(parseFloat(n) || 0)
 }
 
 function todayStr() { return new Date().toISOString().slice(0, 10) }

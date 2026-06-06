@@ -8,14 +8,13 @@ Instructions here apply to this project and are shared with team members.
 React PWA (Vite) + Supabase. Inline styles with a shared `C` (colors) and `S` (style objects) theme. All tabs live in `src/App.jsx` except `CyclesTab` (`src/CyclesTab.jsx`) and `GoalsTab` (`src/GoalsTab.jsx`). Bottom tab bar has 3 primary tabs (Now, Ahead, Flow) + a StackMenu (☰ in header) for secondary navigation.
 
 ## i18n System
-- `src/i18n.jsx` — `LangProvider`, `useT()`, `LANGUAGES` array, full `DICT` for 6 languages
-- Languages: `en_CA` (default), `en_US`, `fr_CA`, `fr_EU`, `es_MX`, `ar` (RTL)
+- `src/i18n.jsx` — `LangProvider`, `useT()`, `LANGUAGES` array, full `DICT` for 5 languages
+- Languages: `en_CA` (default), `en_US`, `fr_CA`, `fr_EU`, `es_MX` (all LTR)
 - `useT()` returns `{ t, lang, setLang, locale, dir, LANGUAGES }`
 - `t(key, vars)` interpolates `{varName}` placeholders; falls back to `en_CA`
-- Language persisted in `localStorage` key `lt_lang`
-- Arabic sets `document.documentElement.dir = 'rtl'`
-- All `fmt(val, locale)` / `fmtAmt(val, locale)` / `fmtDateLabel(ds, t, locale)` / `fmtMonthDay(ds, locale)` accept locale parameter
-- 🌐 Language item in StackMenu → opens `LanguageSheet` bottom sheet
+- Language persisted in `localStorage` key `lt_lang` (unknown/legacy values fall back to `en_CA`)
+- **Currency is language-independent**: `fmt()` / `fmtAmt()` always format with a fixed `$` symbol via `Intl.NumberFormat('en-CA', { currency: 'CAD', currencyDisplay: 'narrowSymbol' })` — only text translates, money formatting never changes with language and shows no currency letters (no `CAD`/`CA$`/`US$`). `fmtDateLabel(ds, t, locale)` / `fmtMonthDay(ds, locale)` still localize dates.
+- Language item in StackMenu → opens `LanguageSheet` bottom sheet
 - App root wrapped in `LangProvider` via `AppWithLang` default export
 
 ## Tech Stack
@@ -93,8 +92,9 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Bottom Navigation
 - 3 main tabs: Now (⌂), Ahead (→), Flow (≡)
 - Header ☰ button → opens `StackMenu` bottom sheet
-- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Appearance 🎨, Notifications 🔔, Share Book 👥, 🧹 Start from Scratch, Sign Out
+- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Appearance, Notifications, Share Book, Start from Scratch, Sign Out (no decorative emojis — menu labels are plain text)
 - Tapping Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
+- `activeTab` is persisted to `localStorage` key `lt_active_tab` and restored on load, so a refresh / PWA reopen returns the user to the tab they left
 - Header also has ⓘ (opens HelpSheet)
 
 ## Start from Scratch

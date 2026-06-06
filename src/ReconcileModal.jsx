@@ -45,10 +45,10 @@ function expandTxLocal(tx, startDate, endDate) {
   return instances
 }
 
-function fmt(val, locale = 'en-CA') {
+function fmt(val) {
   const n = parseFloat(val)
   if (isNaN(n)) return ''
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD' }).format(n)
+  return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(n)
 }
 
 export default function ReconcileModal({ account, transactions, overrides, onSave, onClose }) {
