@@ -1,0 +1,192 @@
+// ─── ENVELOPE LOGIC ──────────────────────────────────────────────────────────
+// Pure helpers for the Envelopes tab: period-window math, period close-out
+// (rollover / move-to-savings / reset), and behaviour-learning suggestions.
+
+export function todayStr() {
+  const d = new Date()
+  return d.toISOString().slice(0, 10)
+}
+
+export function parseDateLocal(dateStr) {
+  return new Date(dateStr + 'T00:00:00')
+}
+
+export function toDateStr(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+export function addDays(dateStr, n) {
+  const d = parseDateLocal(dateStr)
+  d.setDate(d.getDate() + n)
+  return toDateStr(d)
+}
+
+// Given a period kind and its start date, return the inclusive end date.
+export function periodEndFor(period, startStr) {
+  const d = parseDateLocal(startStr)
+  if (period === 'weekly') d.setDate(d.getDate() + 6)
+  else if (period === 'biweekly') d.setDate(d.getDate() + 13)
+  else if (period === 'monthly') { d.setMonth(d.getMonth() + 1); d.setDate(d.getDate() - 1) }
+  else d.setDate(d.getDate() + 13) // sensible default
+  return toDateStr(d)
+}
+
+// The next period window that immediately follows the given one.
+export function nextWindow(period, prevEndStr) {
+  const start = addDays(prevEndStr, 1)
+  return { start, end: periodEndFor(period, start) }
+}
+
+// Is this envelope's current period over (today is past period_end)?
+export function isPeriodOver(env, today = todayStr()) {
+  if (env.link_type === 'none') return false
+  if (!env.period_end) return false
+  return today > env.period_end
+}
+
+// Days remaining in the current period (>= 0).
+export function daysLeftIn(env, today = todayStr()) {
+  if (!env.period_end) return null
+  const end = parseDateLocal(env.period_end)
+  const now = parseDateLocal(today)
+  return Math.max(0, Math.round((end - now) / 86400000) + 1)
+}
+
+// Total available this period = base allocation + anything carried over.
+export function availableFor(env) {
+  return (parseFloat(env.allocated_amount) || 0) + (parseFloat(env.carryover_amount) || 0)
+}
+
+export function leftoverFor(env) {
+  return availableFor(env) - (parseFloat(env.spent_amount) || 0)
+}
+
+// Compute the patch + history row for closing out one ended period and opening
+// the next. `nextStart`/`nextEnd` let cycle-linked envelopes adopt a fresh
+// cycle window; time-based envelopes roll their own window forward.
+export function computeCloseOut(env, opts = {}) {
+  const leftover = leftoverFor(env)
+  const base = parseFloat(env.allocated_amount) || 0
+
+  let nextStart = opts.nextStart || null
+  let nextEnd = opts.nextEnd || null
+  if (!nextStart && env.link_type === 'time' && env.period && env.period_end) {
+    const w = nextWindow(env.period, env.period_end)
+    nextStart = w.start
+    nextEnd = w.end
+  }
+
+  // Carryover only when rolling over and there's money left.
+  const carryover = env.rollover_mode === 'rollover' ? Math.max(0, leftover) : 0
+  // Move-to-savings only when there's a positive leftover and a goal target.
+  const toSavings = env.rollover_mode === 'savings' && leftover > 0 && env.rollover_goal_id
+    ? leftover : 0
+
+  const history = {
+    envelope_id: env.id,
+    book_id: env.book_id,
+    name: env.name,
+    period_start: env.period_start,
+    period_end: env.period_end,
+    allocated_amount: availableFor(env),
+    spent_amount: parseFloat(env.spent_amount) || 0,
+    leftover,
+    rollover_mode: env.rollover_mode,
+  }
+
+  const patch = {
+    spent_amount: 0,
+    carryover_amount: carryover,
+    period_start: nextStart,
+    period_end: nextEnd,
+  }
+
+  return { patch, history, toSavings, leftover, base }
+}
+
+// ─── BEHAVIOUR LEARNING ──────────────────────────────────────────────────────
+// Suggestions are derived from closed-period history + the live envelope state.
+// Each suggestion: { id, kind, envelopeId?, title, body, action? }
+
+const SAMPLE_MIN = 2 // need at least this many closed periods to trust a trend
+
+function avg(nums) {
+  if (!nums.length) return 0
+  return nums.reduce((s, n) => s + n, 0) / nums.length
+}
+
+// Suggest allocation tweaks when an envelope consistently under/over-spends.
+export function buildEnvelopeSuggestions(envelopes, history) {
+  const out = []
+  const byEnv = {}
+  for (const h of history) {
+    (byEnv[h.envelope_id] = byEnv[h.envelope_id] || []).push(h)
+  }
+
+  for (const env of envelopes) {
+    if (env.archived) continue
+    const rows = (byEnv[env.id] || []).slice(-6) // last 6 periods
+    if (rows.length < SAMPLE_MIN) continue
+
+    const spends = rows.map(r => parseFloat(r.spent_amount) || 0)
+    const base = parseFloat(env.allocated_amount) || 0
+    if (base <= 0) continue
+    const avgSpend = avg(spends)
+    const ratio = avgSpend / base
+
+    if (ratio <= 0.7) {
+      const suggested = Math.max(0, Math.round(avgSpend / 5) * 5)
+      out.push({
+        id: `lower-${env.id}`,
+        kind: 'lower',
+        envelopeId: env.id,
+        suggestedAmount: suggested,
+        avgSpend,
+        periods: rows.length,
+      })
+    } else if (ratio >= 1.1) {
+      const suggested = Math.ceil(avgSpend / 5) * 5
+      out.push({
+        id: `raise-${env.id}`,
+        kind: 'raise',
+        envelopeId: env.id,
+        suggestedAmount: suggested,
+        avgSpend,
+        periods: rows.length,
+      })
+    }
+  }
+  return out
+}
+
+// Detect cycle-related nudges:
+//   • a new pay cycle covers today that 'time'/'none' envelopes could link to
+//   • cycle-linked envelopes whose linked cycle has ended and a newer one exists
+export function buildCycleSuggestions(envelopes, cycles, today = todayStr()) {
+  const out = []
+  const active = envelopes.filter(e => !e.archived)
+  if (!active.length) return out
+
+  const currentCycle = (cycles || []).find(c => today >= c.start_date && today <= c.end_date)
+
+  // A new cycle is active and some envelopes aren't riding it yet.
+  if (currentCycle) {
+    const unlinked = active.filter(e => e.link_type !== 'cycle')
+    const stale = active.filter(e => e.link_type === 'cycle' && e.cycle_id !== currentCycle.id)
+    if (unlinked.length || stale.length) {
+      out.push({
+        id: `cycle-started-${currentCycle.id}`,
+        kind: 'cycle_started',
+        cycleId: currentCycle.id,
+        cycle: currentCycle,
+        unlinkedCount: unlinked.length,
+        staleCount: stale.length,
+      })
+    }
+  } else if (active.some(e => e.link_type === 'time' || e.link_type === 'none')) {
+    // No active cycle but the user clearly budgets in periods → suggest creating one.
+    out.push({ id: 'create-cycle', kind: 'create_cycle' })
+  }
+
+  return out
+}
