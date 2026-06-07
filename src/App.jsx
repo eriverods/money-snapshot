@@ -3,6 +3,7 @@ import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
 import CyclesTab from './CyclesTab'
 import GoalsTab from './GoalsTab'
+import EnvelopesTab from './EnvelopesTab'
 import { useT, LangProvider, LANGUAGES } from './i18n'
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
@@ -450,7 +451,7 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
 }
 
 // ─── OVERVIEW TAB (NOW) ────────────────────────────────────────────────────────
-function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles, onGoToAccounts }) {
+function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles, onGoToEnvelopes, onGoToAccounts }) {
   const { t, locale } = useT()
   const today = todayStr()
   const [envelopes, setEnvelopes] = useState([])
@@ -458,18 +459,13 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
 
   useEffect(() => {
     async function loadEnvelopes() {
-      const { data: cycles } = await supabase
-        .from('pay_cycles')
-        .select('id')
-        .eq('book_id', bookId)
-        .lte('start_date', today)
-        .gte('end_date', today)
-        .limit(1)
-      if (!cycles?.length) return
+      // Standalone envelopes (their own tab) — show all active ones for visibility.
       const { data: envs } = await supabase
-        .from('cycle_envelopes')
+        .from('envelopes')
         .select('*')
-        .eq('cycle_id', cycles[0].id)
+        .eq('book_id', bookId)
+        .eq('archived', false)
+        .order('display_order')
       setEnvelopes(envs || [])
     }
     if (bookId) loadEnvelopes()
@@ -532,14 +528,8 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
     })
   }, [transactions, overrides, nextIncomeDate])
 
-  // Envelopes at ≥90% usage
-  const lowEnvelopes = useMemo(() =>
-    envelopes.filter(env => {
-      const allocated = parseFloat(env.allocated_amount) || 0
-      if (allocated <= 0) return false
-      return (parseFloat(env.spent_amount) || 0) / allocated >= 0.9
-    }),
-  [envelopes])
+  // Available = base allocation + anything rolled over from last period.
+  const envAvailable = (env) => (parseFloat(env.allocated_amount) || 0) + (parseFloat(env.carryover_amount) || 0)
 
   return (
     <div>
@@ -659,38 +649,36 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
         </div>
       )}
 
-      {/* Tight envelopes (≥90% used) */}
-      {lowEnvelopes.length > 0 && (
+      {/* Envelopes — direct visibility of every active envelope */}
+      {envelopes.length > 0 && (
         <div style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={S.lbl}>{t('overview.tight_envelopes')}</div>
-            <button onClick={onGoToCycles} style={{ background: 'none', border: 'none', color: C.purple, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>{t('overview.go_cycles')}</button>
+            <div style={S.lbl}>{t('overview.envelopes')}</div>
+            <button onClick={onGoToEnvelopes} style={{ background: 'none', border: 'none', color: C.purple, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>{t('overview.go_envelopes')}</button>
           </div>
-          {lowEnvelopes.map(env => {
-            const allocated = parseFloat(env.allocated_amount) || 0
+          {envelopes.map(env => {
+            const available = envAvailable(env)
             const spent = parseFloat(env.spent_amount) || 0
-            const remaining = allocated - spent
-            const pct = Math.min(100, (spent / allocated) * 100)
-            const isOver = spent > allocated
+            const remaining = available - spent
+            const pct = available > 0 ? Math.min(100, (spent / available) * 100) : 0
+            const isOver = spent > available
+            const tight = available > 0 && spent / available >= 0.9
+            const barColor = isOver ? C.red : tight ? C.orange : C.green
             return (
-              <div key={env.id} style={{ marginBottom: 12 }}>
+              <div key={env.id} onClick={onGoToEnvelopes} style={{ marginBottom: 12, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {env.color && <div style={{ width: 8, height: 8, borderRadius: '50%', background: env.color, flexShrink: 0 }} />}
+                    {env.emoji
+                      ? <span style={{ fontSize: 13 }}>{env.emoji}</span>
+                      : env.color && <div style={{ width: 8, height: 8, borderRadius: '50%', background: env.color, flexShrink: 0 }} />}
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{env.name}</span>
                   </div>
-                  <span style={{ fontSize: 11, color: isOver ? C.red : C.orange }}>
+                  <span style={{ fontSize: 11, color: isOver ? C.red : tight ? C.orange : C.textMid }}>
                     {isOver ? t('overview.over', { amount: fmt(Math.abs(remaining), locale) }) : t('overview.left', { amount: fmt(remaining, locale) })}
                   </span>
                 </div>
-                <div style={{ height: 5, background: C.surfaceHigh, borderRadius: 3, overflow: 'hidden', marginBottom: 5 }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: isOver ? C.red : C.orange, borderRadius: 3 }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: C.textLow }}>{t('overview.pct_used', { pct: Math.round(pct) })}</span>
-                  <button onClick={onGoToCycles} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, padding: '2px 8px', color: C.textMid, fontSize: 10, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    {t('overview.reassign')}
-                  </button>
+                <div style={{ height: 5, background: C.surfaceHigh, borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3 }} />
                 </div>
               </div>
             )
@@ -1841,6 +1829,7 @@ function ThemePicker({ prefs, onSave, onClose }) {
 function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onShowLang, onStartFromScratch, onSignOut, onClose }) {
   const { t } = useT()
   const navItems = [
+    { id: 'envelopes', icon: '✉', labelKey: 'menu.envelopes', descKey: 'menu.envelopes_desc' },
     { id: 'cycles',   icon: '⊙', labelKey: 'menu.cycles',   descKey: 'menu.cycles_desc' },
     { id: 'goals',    icon: '◈', labelKey: 'menu.goals',    descKey: 'menu.goals_desc' },
     { id: 'accounts', icon: '◎', labelKey: 'menu.accounts', descKey: 'menu.accounts_desc' },
@@ -2353,7 +2342,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     { id: 'ahead',        labelKey: 'tab.ahead', icon: '→' },
     { id: 'transactions', labelKey: 'tab.flow',  icon: '≡' },
   ]
-  const isStackActive = ['cycles', 'goals', 'accounts'].includes(activeTab)
+  const isStackActive = ['envelopes', 'cycles', 'goals', 'accounts'].includes(activeTab)
 
   return (
     <div style={S.root}>
@@ -2431,6 +2420,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
               <OverviewTab accounts={accounts} transactions={transactions} overrides={overrides}
                 onReconcile={setReconcileAccount} bookId={book.id}
                 onGoToCycles={() => setActiveTab('cycles')}
+                onGoToEnvelopes={() => setActiveTab('envelopes')}
                 onGoToAccounts={() => setActiveTab('accounts')} />
             )}
             {activeTab === 'ahead' && (
@@ -2440,6 +2430,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
             {activeTab === 'transactions' && (
               <TransactionsTab accounts={accounts} transactions={transactions} overrides={overrides}
                 bookId={book.id} onRefresh={loadData} categories={categories} />
+            )}
+            {activeTab === 'envelopes' && (
+              <EnvelopesTab bookId={book.id} onGoToCycles={() => setActiveTab('cycles')} />
             )}
             {activeTab === 'cycles' && (
               <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />

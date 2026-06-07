@@ -42,6 +42,18 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - `GoalsTab` in `src/GoalsTab.jsx`, tab icon `◈`
 - Per-goal progress bars, emoji + color picker, contribution logging
 
+## Envelopes Feature ✓ Complete
+- `EnvelopesTab` in `src/EnvelopesTab.jsx`, StackMenu icon `✉`. Standalone, first-class envelopes (separate from the old cycle-bound `cycle_envelopes` used inside CyclesTab, which still works).
+- Tables (migration `supabase/migrations/20260607_envelopes.sql`):
+  - `envelopes` — `book_id, name, color, emoji, allocated_amount` (base/period), `spent_amount`, `carryover_amount` (rolled-in leftover), `link_type` ('cycle'|'time'|'none'), `period` ('weekly'|'biweekly'|'monthly'), `period_start`, `period_end`, `cycle_id` → pay_cycles, `rollover_mode` ('rollover'|'savings'|'none'), `rollover_goal_id` → savings_goals, `display_order`, `archived`
+  - `envelope_period_history` — one row per closed-out period (allocated/spent/leftover); powers behaviour-learning suggestions
+  - RLS via `user_has_book_access(book_id)`; both folded into `reset_book_data`
+- **Link options**: each envelope refreshes by a fixed **time** period, rides a **pay cycle**, or is **always-on** (none).
+- **Available** = `allocated_amount + carryover_amount`; usage bar = `spent / available`.
+- **Period close-out**: when `today > period_end`, the tab shows a "close out & refresh" prompt. Leftover (`available − spent`) either rolls over (→ next period `carryover_amount`), moves to a savings goal (inserts `savings_contributions` + bumps `savings_goals.current_amount`), or resets. Logic in `src/lib/envelopeLogic.js` (`computeCloseOut`, `periodEndFor`, `nextWindow`, `isPeriodOver`).
+- **Behaviour learning** (`buildEnvelopeSuggestions`, `buildCycleSuggestions`): from history, suggests lowering/raising allocations for consistent under/over-spend; detects a new pay cycle started (offers to link envelopes) or, when none exists, suggests creating one.
+- i18n keys under `env.*` (en_CA; other languages fall back to en_CA per `t()` design).
+
 ## Phase 4 — Push Notifications ✓ Complete
 - SW handles push + notificationclick
 - Edge Function `supabase/functions/send-notifications/index.ts` runs hourly
@@ -62,7 +74,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Accounts** box: grouped into Debit / Savings / Credit sections (only groups with accounts shown), each with its own subtotal — no combined grand total. Tap any row to open ReconcileModal for that account
 - **14-day calendar grid**: 7-col × 2-row, each cell shows day net flow; payday cell highlighted green, today purple. Tap a day to open a bottom sheet listing that date's transactions + day net. All calendar date strings use local time via `toDateStr()` (not UTC `toISOString`) so amounts land on the correct day in every timezone
 - **Bills til next payday**: expenses due before the next income transaction, with running total
-- **Tight envelopes**: loads active `cycle_envelopes` from Supabase (cycle covering today), shows any at ≥90% usage with "Reassign →" → navigates to Cycles tab
+- **Envelopes**: loads active standalone `envelopes` from Supabase (non-archived), shows every one with a usage bar (tight ones at ≥90% go orange/red) → tap or "Go to Envelopes →" navigates to the Envelopes tab (`onGoToEnvelopes`)
 
 ## Reconcile Flow
 - `ReconcileModal` (`src/ReconcileModal.jsx`): "Add transaction to explain difference" rows now include a **date field** (default today); date is saved per-transaction (not pinned to baseline date)
@@ -92,8 +104,8 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 ## Bottom Navigation
 - 3 main tabs: Now (⌂), Ahead (→), Flow (≡)
 - Header ☰ button → opens `StackMenu` bottom sheet
-- `StackMenu` lists: Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Appearance, Notifications, Share Book, Start from Scratch, Sign Out (no decorative emojis — menu labels are plain text)
-- Tapping Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
+- `StackMenu` lists: Envelopes ✉, Cycles ⊙, Goals ◈, Accounts ◎, ─ divider, Appearance, Notifications, Share Book, Start from Scratch, Sign Out (no decorative emojis — menu labels are plain text)
+- Tapping Envelopes/Cycles/Goals/Accounts navigates to those full-screen tabs (activeTab state)
 - `activeTab` is persisted to `localStorage` key `lt_active_tab` and restored on load, so a refresh / PWA reopen returns the user to the tab they left
 - Header also has ⓘ (opens HelpSheet)
 
@@ -136,10 +148,11 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - Backdrop div closes menu on outside tap
 
 ## Tab Descriptions
-- **Now (⌂)**: OverviewTab — safe-to-spend hero, accounts, today's activity, tight envelopes, upcoming bills
+- **Now (⌂)**: OverviewTab — safe-to-spend hero, accounts, today's activity, envelopes (direct visibility), upcoming bills
 - **Ahead (→)**: AheadTab — pay cycle countdown, next 30-day timeline grouped by date, tap to approve/skip/edit amount. Per-day running balance is seeded from spendable accounts only (`include_in_safe_to_spend`) and always shows 2 decimals (`fmt`, not `fmtAmt`)
 - **Flow (≡)**: TransactionsTab — full instance list past 90d + future 30d, sort by date/amount with asc/desc toggle (default: date desc), filter by type/account/category, tap to edit via EditTxSheet
-- **Cycles (⊙)**: CyclesTab (via StackMenu) — pay cycle management and envelope budgets
+- **Cycles (⊙)**: CyclesTab (via StackMenu) — pay cycle management and (legacy) per-cycle envelope budgets
+- **Envelopes (✉)**: EnvelopesTab (via StackMenu) — standalone budget envelopes; see "Envelopes Feature" above
 - **Goals (◈)**: GoalsTab (via StackMenu) — savings goals with progress bars
 - **Accounts (◎)**: AccountsTab (via StackMenu) — account management and reconcile
 
