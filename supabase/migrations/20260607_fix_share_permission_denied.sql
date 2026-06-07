@@ -13,7 +13,28 @@
 -- SECURITY DEFINER function so it can read `book_members` without recursing
 -- through that table's own RLS.
 --
--- Run in Supabase -> SQL Editor, then Settings -> API -> "Reload schema cache".
+-- Run in Supabase -> SQL Editor. (RLS changes take effect immediately; a
+-- schema cache reload is not required. If desired: NOTIFY pgrst, 'reload schema';)
+
+-- ---------------------------------------------------------------------------
+-- Drop EVERY existing policy on the sharing tables first. The original
+-- dashboard-created policies may have different names than ours, and a single
+-- leftover policy that references auth.users will keep throwing "permission
+-- denied for table users" even after we add the corrected policies (a hard
+-- error in any OR'd permissive policy fails the whole query).
+-- ---------------------------------------------------------------------------
+do $$
+declare r record;
+begin
+  for r in
+    select policyname, tablename
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('book_invites', 'book_members')
+  loop
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Shared access helper (owner OR accepted member). SECURITY DEFINER so the
