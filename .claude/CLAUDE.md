@@ -55,6 +55,7 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - Invitee sees banner at login to accept/decline
 - Accepted → row inserted into `book_members`, shared book appears in book switcher
 - Book loading queries both owned books and `book_members` rows
+- RLS for `book_invites` / `book_members` matches the invitee by `auth.jwt() ->> 'email'` — **never** query `auth.users` in a policy (the `authenticated` role has no grant on it → "permission denied for table users" when sharing). `user_has_book_access` is SECURITY DEFINER so the `book_members` lookup bypasses RLS. Policies live in `supabase/migrations/20260607_fix_share_permission_denied.sql`
 
 ## Home Tab (OverviewTab) ✓ Redesigned
 `OverviewTab` in `src/App.jsx` accepts `{ accounts, transactions, overrides, onReconcile, bookId, onGoToCycles }`.
