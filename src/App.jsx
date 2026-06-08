@@ -1700,6 +1700,8 @@ const PALETTES = [
 
 const A11Y_IDS = ['none', 'high_contrast', 'colorblind_safe']
 const A11Y_KEYS = { none: 'theme.none', high_contrast: 'theme.high_contrast', colorblind_safe: 'theme.colorblind' }
+const FONT_SIZE_IDS = ['default', 'large', 'larger', 'largest']
+const FONT_SIZE_KEYS = { default: 'theme.size_default', large: 'theme.size_large', larger: 'theme.size_larger', largest: 'theme.size_largest' }
 
 // Preview colors per palette for ModeCard (hardcoded so they don't shift with theme)
 const PALETTE_PREVIEW = {
@@ -1717,11 +1719,12 @@ const PALETTE_PREVIEW = {
   },
 }
 
-function applyThemeAttrs({ palette, mode, a11y }) {
+function applyThemeAttrs({ palette, mode, a11y, fontSize }) {
   const el = document.documentElement
   el.setAttribute('data-palette', palette)
   el.setAttribute('data-mode', mode)
   el.setAttribute('data-accessibility', a11y || 'none')
+  el.setAttribute('data-font-size', fontSize || 'default')
 }
 
 function ModeCard({ id, selected, palette, onClick }) {
@@ -1757,17 +1760,20 @@ function ModeCard({ id, selected, palette, onClick }) {
 
 function ThemePicker({ prefs, onSave, onClose }) {
   const { t } = useT()
-  const [palette, setPalette] = useState(prefs.palette)
-  const [mode, setMode]       = useState(prefs.mode)
-  const [a11y, setA11y]       = useState(prefs.a11y || 'none')
+  const [palette, setPalette]   = useState(prefs.palette)
+  const [mode, setMode]         = useState(prefs.mode)
+  const [a11y, setA11y]         = useState(prefs.a11y || 'none')
+  const [fontSize, setFontSize] = useState(prefs.fontSize || 'default')
 
-  function applyNow(p, m, a) {
-    applyThemeAttrs({ palette: p, mode: m, a11y: a })
-    onSave({ palette: p, mode: m, a11y: a })
+  function applyNow(next) {
+    const merged = { palette, mode, a11y, fontSize, ...next }
+    applyThemeAttrs(merged)
+    onSave(merged)
   }
-  function pickPalette(p) { setPalette(p); applyNow(p, mode, a11y) }
-  function pickMode(m)    { setMode(m); setA11y('none'); applyNow(palette, m, 'none') }
-  function pickA11y(a)    { setA11y(a); applyNow(palette, mode, a) }
+  function pickPalette(p)  { setPalette(p); applyNow({ palette: p }) }
+  function pickMode(m)     { setMode(m); setA11y('none'); applyNow({ mode: m, a11y: 'none' }) }
+  function pickA11y(a)     { setA11y(a); applyNow({ a11y: a }) }
+  function pickFontSize(f) { setFontSize(f); applyNow({ fontSize: f }) }
 
   const modeActive = a11y === 'none'
 
@@ -1815,6 +1821,17 @@ function ThemePicker({ prefs, onSave, onClose }) {
               <button key={id} onClick={() => pickA11y(id)}
                 style={{ flex: 1, background: a11y === id ? C.purple : C.surfaceHigh, border: 'none', borderLeft: i > 0 ? `1px solid ${C.border}` : 'none', padding: '11px 4px', color: a11y === id ? 'var(--c-btn-text)' : C.textMid, fontFamily: 'inherit', fontSize: 11, cursor: 'pointer', fontWeight: a11y === id ? 700 : 400 }}>
                 {t(A11Y_KEYS[id])}
+              </button>
+            ))}
+          </div>
+
+          {/* Text size */}
+          <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', margin: '26px 0 10px' }}>{t('theme.text_size')}</div>
+          <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+            {FONT_SIZE_IDS.map((id, i) => (
+              <button key={id} onClick={() => pickFontSize(id)}
+                style={{ flex: 1, background: fontSize === id ? C.purple : C.surfaceHigh, border: 'none', borderLeft: i > 0 ? `1px solid ${C.border}` : 'none', padding: '11px 4px', color: fontSize === id ? 'var(--c-btn-text)' : C.textMid, fontFamily: 'inherit', fontSize: 11, cursor: 'pointer', fontWeight: fontSize === id ? 700 : 400 }}>
+                {t(FONT_SIZE_KEYS[id])}
               </button>
             ))}
           </div>
@@ -2224,7 +2241,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       const c = localStorage.getItem('lt_prefs')
       if (c) return JSON.parse(c)
     } catch {}
-    return { palette: 'still_water', mode: 'dark', a11y: 'none' }
+    return { palette: 'still_water', mode: 'dark', a11y: 'none', fontSize: 'default' }
   })
   const [newBookName, setNewBookName] = useState('')
   const [creatingBook, setCreatingBook] = useState(false)
@@ -2243,7 +2260,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
     supabase.from('user_preferences').select('*').eq('user_id', session.user.id).single()
       .then(({ data }) => {
         if (data) {
-          const loaded = { palette: data.palette, mode: data.mode, a11y: data.accessibility }
+          const loaded = { palette: data.palette, mode: data.mode, a11y: data.accessibility, fontSize: data.font_size || 'default' }
           setPrefs(loaded)
           localStorage.setItem('lt_prefs', JSON.stringify(loaded))
         }
@@ -2258,6 +2275,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
       palette: newPrefs.palette,
       mode: newPrefs.mode,
       accessibility: newPrefs.a11y,
+      font_size: newPrefs.fontSize || 'default',
       updated_at: new Date().toISOString(),
     })
   }

@@ -246,6 +246,14 @@
   --c-negative-67: rgba(232, 145, 42, 0.67);
 }
 
+/* ─── TEXT SIZE ───────────────────────────────────────────────────────────────
+   Applied via data-font-size on <html>. Uses `zoom` so that text AND its
+   containers (padding, gaps, boxes) scale together — keeping every layout intact
+   and avoiding clipped/overflowing boxes. `default` = no scaling (current size). */
+html[data-font-size="large"]   { zoom: 1.10; }
+html[data-font-size="larger"]  { zoom: 1.20; }
+html[data-font-size="largest"] { zoom: 1.30; }
+
 /* ─── GLOBAL RESETS ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
