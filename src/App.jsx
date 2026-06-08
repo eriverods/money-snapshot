@@ -1,10 +1,45 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, createContext, useContext } from 'react'
 import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
 import CyclesTab from './CyclesTab'
 import GoalsTab from './GoalsTab'
 import EnvelopesTab from './EnvelopesTab'
 import { useT, LangProvider, LANGUAGES } from './i18n'
+
+// ─── UNSAVED-CHANGES GUARD ──────────────────────────────────────────────────────
+// Warns before a full page reload / tab close while any form has unsaved input.
+// Components register their dirty state via useUnsavedGuard(isDirty); the provider
+// keeps a live set of dirty keys and prompts via the browser's beforeunload dialog.
+const UnsavedGuardContext = createContext(null)
+
+function UnsavedGuardProvider({ children }) {
+  const dirtyRef = useRef(new Set())
+  const setDirty = useCallback((key, isDirty) => {
+    if (isDirty) dirtyRef.current.add(key)
+    else dirtyRef.current.delete(key)
+  }, [])
+  useEffect(() => {
+    function onBeforeUnload(e) {
+      if (dirtyRef.current.size > 0) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+  return <UnsavedGuardContext.Provider value={setDirty}>{children}</UnsavedGuardContext.Provider>
+}
+
+// Register a form's dirty state. When `isDirty` is true a pending-reload warning
+// is armed; it clears automatically on save, clean-out, or unmount.
+function useUnsavedGuard(isDirty) {
+  const setDirty = useContext(UnsavedGuardContext)
+  const keyRef = useRef(Math.random().toString(36).slice(2))
+  useEffect(() => {
+    if (!setDirty) return
+    const key = keyRef.current
+    setDirty(key, isDirty)
+    return () => setDirty(key, false)
+  }, [isDirty, setDirty])
+}
 
 // ─── THEME ────────────────────────────────────────────────────────────────────
 const C = {
@@ -255,6 +290,9 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
+  // Pending edit = the user has started entering a transaction
+  useUnsavedGuard(!saving && !!(form.label.trim() || form.amount || form.category || form.end_date))
+
   function set(k, v) { setForm(p => ({ ...p, [k]: v })) }
 
   async function save() {
@@ -351,6 +389,9 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
   const [editAmt, setEditAmt] = useState(String(currentAmt.toFixed(2)))
   const [showDelete, setShowDelete] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // Pending edit = the amount was changed but not yet saved
+  useUnsavedGuard(!saving && editAmt !== String(currentAmt.toFixed(2)))
 
   async function saveOnce() {
     const parsed = parseFloat(editAmt)
@@ -2720,5 +2761,5 @@ function App() {
 // Wrap with LangProvider so all components have access to useT()
 const _App = App
 export default function AppWithLang() {
-  return <LangProvider><_App /></LangProvider>
+  return <LangProvider><UnsavedGuardProvider><_App /></UnsavedGuardProvider></LangProvider>
 }
