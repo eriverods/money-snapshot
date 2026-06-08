@@ -2612,6 +2612,10 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Remember which book is active so a refresh / app reopen returns to it
+  // (instead of snapping back to the first book — e.g. mid transaction entry).
+  useEffect(() => { if (book) localStorage.setItem('lt_active_book', book.id) }, [book])
+
   useEffect(() => {
     if (missingConfig || !session) return
     setCheckingBook(true)
@@ -2628,7 +2632,13 @@ function App() {
       }
       const books = [...(owned || []), ...shared]
       setAllBooks(books)
-      if (books.length > 0) setBook(books[0])
+      if (books.length > 0) {
+        // Restore the book the user was last in (survives refresh / app reopen),
+        // falling back to the first book if that one is gone or none was saved.
+        const savedId = localStorage.getItem('lt_active_book')
+        const saved = savedId && books.find(b => b.id === savedId)
+        setBook(saved || books[0])
+      }
       // Check for pending invites to this user's email
       const { data: invites } = await supabase.from('book_invites')
         .select('*, books(name)').eq('email', session.user.email).eq('status', 'pending')
