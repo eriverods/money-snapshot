@@ -1536,6 +1536,156 @@ const sheetStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)'
 const sheetInner = { background: C.surface, borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }
 const sheetHeader = { padding: '18px 18px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }
 
+// ─── BOOKS MANAGER ─────────────────────────────────────────────────────────────
+function fmtStamp(iso, locale) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d)) return null
+  return d.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function BooksSheet({ books, activeBookId, session, onSwitch, onReloadBooks, onClose }) {
+  const { t, locale } = useT()
+  const [meta, setMeta] = useState({})       // bookId → { members:[email], lastActivity:ds }
+  const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState(null)
+  const [confirmId, setConfirmId] = useState(null)
+  const [err, setErr] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const ids = books.map(b => b.id)
+      if (ids.length === 0) { setMeta({}); setLoading(false); return }
+      const [{ data: mem }, { data: txs }] = await Promise.all([
+        supabase.from('book_members').select('book_id, email').in('book_id', ids),
+        supabase.from('cashflow_transactions').select('book_id, date').in('book_id', ids),
+      ])
+      const m = {}
+      ids.forEach(id => { m[id] = { members: [], lastActivity: null } })
+      ;(mem || []).forEach(r => { (m[r.book_id] ||= { members: [], lastActivity: null }).members.push(r.email) })
+      ;(txs || []).forEach(r => {
+        const cur = (m[r.book_id] ||= { members: [], lastActivity: null })
+        if (!cur.lastActivity || r.date > cur.lastActivity) cur.lastActivity = r.date
+      })
+      if (!cancelled) { setMeta(m); setLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [books])
+
+  async function deleteBook(book) {
+    setBusyId(book.id); setErr(null)
+    const { error } = await supabase.rpc('delete_book', { p_book_id: book.id })
+    if (error) { setErr(error.message); setBusyId(null); return }
+    await onReloadBooks()
+    setBusyId(null); setConfirmId(null)
+  }
+
+  async function leaveBook(book) {
+    setBusyId(book.id); setErr(null)
+    const { error } = await supabase.from('book_members').delete().eq('book_id', book.id).eq('user_id', session.user.id)
+    if (error) { setErr(error.message); setBusyId(null); return }
+    await onReloadBooks()
+    setBusyId(null); setConfirmId(null)
+  }
+
+  return (
+    <div style={sheetStyle} onClick={onClose}>
+      <div style={{ ...sheetInner, maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
+        <div style={sheetHeader}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>{t('books.title')}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: '14px 16px 28px', overflowY: 'auto' }}>
+          {err && <div style={{ color: C.red, fontSize: 12, marginBottom: 10 }}>{err}</div>}
+          {loading ? (
+            <div style={{ color: C.textLow, fontSize: 13 }}>{t('common.loading')}</div>
+          ) : books.map(b => {
+            const isOwner = b.owner_user_id === session.user.id
+            const isActive = b.id === activeBookId
+            const info = meta[b.id] || { members: [], lastActivity: null }
+            const memberCount = info.members.length
+            // Who can see it: owner + co-owners
+            const seerCount = memberCount + 1
+            const ownerLabel = isOwner ? t('books.you') : t('books.owner')
+            const whoLabel = seerCount === 1
+              ? t('books.just_you')
+              : t('books.people', { count: seerCount })
+            const confirming = confirmId === b.id
+            const busy = busyId === b.id
+            return (
+              <div key={b.id} style={{ background: C.surfaceHigh, border: `1px solid ${isActive ? C.purple : C.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</div>
+                    <div style={{ fontSize: 10, color: isOwner ? C.purple : C.textMid, marginTop: 3 }}>
+                      {isActive ? `${t('books.active')} · ` : ''}{isOwner ? t('books.you_owner') : t('books.shared_badge')}
+                    </div>
+                  </div>
+                  {!isActive && (
+                    <button onClick={() => { onSwitch(b); onClose() }}
+                      style={{ ...S.btn(C.surface, true), padding: '7px 14px', fontSize: 12, flexShrink: 0 }}>
+                      {t('books.open')}
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', marginTop: 12 }}>
+                  <div style={{ minWidth: 90 }}>
+                    <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>{t('books.created')}</div>
+                    <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{fmtStamp(b.created_at, locale) || '—'}</div>
+                  </div>
+                  <div style={{ minWidth: 90 }}>
+                    <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>{t('books.updated')}</div>
+                    <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{info.lastActivity ? fmtMonthDay(info.lastActivity, locale) : t('books.no_activity')}</div>
+                  </div>
+                  <div style={{ minWidth: 90 }}>
+                    <div style={{ fontSize: 9, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>{t('books.shared_with')}</div>
+                    <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{whoLabel}</div>
+                  </div>
+                </div>
+
+                {memberCount > 0 && (
+                  <div style={{ fontSize: 11, color: C.textLow, marginTop: 8 }}>
+                    {ownerLabel}{info.members.map(e => `, ${e}`).join('')}
+                  </div>
+                )}
+
+                {/* Danger zone */}
+                <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  {confirming ? (
+                    <div>
+                      <div style={{ fontSize: 12, color: C.text, marginBottom: 8 }}>
+                        {isOwner ? t('books.delete_confirm') : t('books.leave_confirm')}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => isOwner ? deleteBook(b) : leaveBook(b)} disabled={busy}
+                          style={{ ...S.btn(C.red), flex: 1, fontSize: 12, opacity: busy ? 0.6 : 1 }}>
+                          {busy ? t('common.saving') : (isOwner ? t('books.confirm_delete') : t('books.confirm_leave'))}
+                        </button>
+                        <button onClick={() => setConfirmId(null)} disabled={busy}
+                          style={{ ...S.btn(C.surface, true), flex: 1, fontSize: 12 }}>
+                          {t('books.cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setConfirmId(b.id); setErr(null) }}
+                      style={{ background: 'none', border: 'none', color: C.red, fontSize: 12, cursor: 'pointer', padding: '4px 0', fontFamily: 'inherit' }}>
+                      {isOwner ? t('books.delete') : t('books.leave')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4)
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
@@ -1884,7 +2034,7 @@ function ThemePicker({ prefs, onSave, onClose }) {
 }
 
 // ─── STACK MENU ───────────────────────────────────────────────────────────────
-function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onShowLang, onStartFromScratch, onSignOut, onClose }) {
+function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowTheme, onShowLang, onShowBooks, onStartFromScratch, onSignOut, onClose }) {
   const { t } = useT()
   const navItems = [
     { id: 'envelopes', icon: '✉', labelKey: 'menu.envelopes', descKey: 'menu.envelopes_desc' },
@@ -1915,6 +2065,7 @@ function StackMenu({ activeTab, onNavigate, onShowNotif, onShowShare, onShowThem
           <div style={{ borderTop: `1px solid ${C.border}`, margin: '8px 0 12px' }} />
 
           {[
+            { labelKey: 'menu.books',         fn: () => { onShowBooks(); onClose() } },
             { labelKey: 'menu.appearance',    fn: () => { onShowTheme(); onClose() } },
             { labelKey: 'menu.notifications', fn: () => { onShowNotif(); onClose() } },
             { labelKey: 'menu.share',         fn: () => { onShowShare(); onClose() } },
@@ -2252,7 +2403,7 @@ function FAB({ onTransaction, onBill, onGoal, onNewBook }) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
-function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
+function MainApp({ session, book, allBooks, onSwitchBook, onReloadBooks, onSignOut }) {
   const { t, locale } = useT()
   const [accounts, setAccounts] = useState([])
   const [transactions, setTransactions] = useState([])
@@ -2273,6 +2424,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
   const [showAccountPicker, setShowAccountPicker] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [showStack, setShowStack] = useState(false)
+  const [showBooksSheet, setShowBooksSheet] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [showScratch, setShowScratch] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
@@ -2585,9 +2737,15 @@ function MainApp({ session, book, allBooks, onSwitchBook, onSignOut }) {
           onShowShare={() => setShowShareSheet(true)}
           onShowTheme={() => setShowThemePicker(true)}
           onShowLang={() => setShowLang(true)}
+          onShowBooks={() => setShowBooksSheet(true)}
           onStartFromScratch={() => { setShowStack(false); setShowScratch(true) }}
           onSignOut={onSignOut}
           onClose={() => setShowStack(false)} />
+      )}
+      {showBooksSheet && (
+        <BooksSheet books={allBooks} activeBookId={book.id} session={session}
+          onSwitch={onSwitchBook} onReloadBooks={onReloadBooks}
+          onClose={() => setShowBooksSheet(false)} />
       )}
       {showLang && <LanguageSheet onClose={() => setShowLang(false)} />}
       {showScratch && (
@@ -2657,37 +2815,46 @@ function App() {
   // (instead of snapping back to the first book — e.g. mid transaction entry).
   useEffect(() => { if (book) localStorage.setItem('lt_active_book', book.id) }, [book])
 
+  // Load (or reload) the books this user can access. Reusable so the Books
+  // manager can refresh the list after a delete / leave.
+  const loadBooks = useCallback(async () => {
+    if (missingConfig || !session) return
+    // Books owned by this user
+    const { data: owned } = await supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
+    // Books shared with this user
+    const { data: memberships } = await supabase.from('book_members').select('book_id').eq('user_id', session.user.id)
+    const sharedIds = (memberships || []).map(m => m.book_id)
+    let shared = []
+    if (sharedIds.length > 0) {
+      const { data } = await supabase.from('books').select('*').in('id', sharedIds)
+      shared = data || []
+    }
+    const books = [...(owned || []), ...shared]
+    setAllBooks(books)
+    if (books.length > 0) {
+      // Restore the book the user was last in (survives refresh / app reopen),
+      // falling back to the first book if that one is gone or none was saved.
+      const savedId = localStorage.getItem('lt_active_book')
+      const saved = savedId && books.find(b => b.id === savedId)
+      setBook(saved || books[0])
+    } else {
+      // No books left (e.g. the only book was deleted) → back to setup.
+      setBook(null)
+    }
+  }, [session])
+
   useEffect(() => {
     if (missingConfig || !session) return
     setCheckingBook(true)
-    async function loadBooks() {
-      // Books owned by this user
-      const { data: owned } = await supabase.from('books').select('*').eq('owner_user_id', session.user.id).order('created_at')
-      // Books shared with this user
-      const { data: memberships } = await supabase.from('book_members').select('book_id').eq('user_id', session.user.id)
-      const sharedIds = (memberships || []).map(m => m.book_id)
-      let shared = []
-      if (sharedIds.length > 0) {
-        const { data } = await supabase.from('books').select('*').in('id', sharedIds)
-        shared = data || []
-      }
-      const books = [...(owned || []), ...shared]
-      setAllBooks(books)
-      if (books.length > 0) {
-        // Restore the book the user was last in (survives refresh / app reopen),
-        // falling back to the first book if that one is gone or none was saved.
-        const savedId = localStorage.getItem('lt_active_book')
-        const saved = savedId && books.find(b => b.id === savedId)
-        setBook(saved || books[0])
-      }
-      // Check for pending invites to this user's email
-      const { data: invites } = await supabase.from('book_invites')
-        .select('*, books(name)').eq('email', session.user.email).eq('status', 'pending')
-      setPendingInvites(invites || [])
-      setCheckingBook(false)
-    }
     loadBooks()
-  }, [session])
+      .then(async () => {
+        // Check for pending invites to this user's email
+        const { data: invites } = await supabase.from('book_invites')
+          .select('*, books(name)').eq('email', session.user.email).eq('status', 'pending')
+        setPendingInvites(invites || [])
+      })
+      .finally(() => setCheckingBook(false))
+  }, [session, loadBooks])
 
   async function acceptInvite(invite) {
     await supabase.from('book_members').insert({
@@ -2755,7 +2922,7 @@ function App() {
     setBook(b)
   }
 
-  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={switchBook} onSignOut={signOut} />
+  return <MainApp session={session} book={book} allBooks={allBooks} onSwitchBook={switchBook} onReloadBooks={loadBooks} onSignOut={signOut} />
 }
 
 // Wrap with LangProvider so all components have access to useT()
