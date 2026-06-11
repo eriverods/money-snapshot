@@ -387,16 +387,33 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
   const isModified = override?.action === 'modified'
   const currentAmt = isModified ? (parseFloat(override.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
   const [editAmt, setEditAmt] = useState(String(currentAmt.toFixed(2)))
+  const [editLabel, setEditLabel] = useState(tx.label || '')
+  const [editDate, setEditDate] = useState(tx.date || date)
   const [showDelete, setShowDelete] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Pending edit = the amount was changed but not yet saved
-  useUnsavedGuard(!saving && editAmt !== String(currentAmt.toFixed(2)))
+  const labelChanged = editLabel.trim() !== (tx.label || '')
+  const dateChanged = editDate !== (tx.date || date)
+  const amtChanged = editAmt !== String(currentAmt.toFixed(2))
+
+  // Pending edit = amount, description, or date changed but not yet saved
+  useUnsavedGuard(!saving && (amtChanged || labelChanged || dateChanged))
+
+  // Description and date live on the base transaction (the whole series); fold
+  // any pending changes into a patch object shared by the save handlers.
+  function detailsPatch() {
+    const patch = {}
+    if (labelChanged && editLabel.trim()) patch.label = editLabel.trim()
+    if (dateChanged && editDate) patch.date = editDate
+    return patch
+  }
 
   async function saveOnce() {
     const parsed = parseFloat(editAmt)
     if (isNaN(parsed) || parsed <= 0) return
     setSaving(true)
+    const patch = detailsPatch()
+    if (Object.keys(patch).length) await supabase.from('cashflow_transactions').update(patch).eq('id', tx.id)
     const rec = { transaction_id: tx.id, instance_date: date, action: 'modified', modified_amount: parsed }
     if (override) await supabase.from('cashflow_overrides').update(rec).eq('id', override.id)
     else await supabase.from('cashflow_overrides').insert(rec)
@@ -408,7 +425,7 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
     const parsed = parseFloat(editAmt)
     if (isNaN(parsed) || parsed <= 0) return
     setSaving(true)
-    await supabase.from('cashflow_transactions').update({ amount: parsed }).eq('id', tx.id)
+    await supabase.from('cashflow_transactions').update({ amount: parsed, ...detailsPatch() }).eq('id', tx.id)
     setSaving(false)
     onRefresh(); onClose()
   }
@@ -448,6 +465,21 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer', flexShrink: 0 }}>×</button>
         </div>
 
+        <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{t('edit.description')}</div>
+        <input
+          style={{ ...S.inp, width: '100%', marginBottom: 14 }}
+          value={editLabel}
+          onChange={e => setEditLabel(e.target.value)}
+        />
+
+        <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{t('edit.date')}</div>
+        <input
+          style={{ ...S.inp, width: '100%', marginBottom: 14 }}
+          type="date"
+          value={editDate}
+          onChange={e => setEditDate(e.target.value)}
+        />
+
         <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{t('edit.amount')}</div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16 }}>
           <input
@@ -457,12 +489,19 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
             onChange={e => setEditAmt(e.target.value)}
           />
         </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button style={{ ...S.btn(), flex: 1 }} onClick={saveOnce} disabled={saving}>{t('edit.this_time')}</button>
-          {isRecurring && (
-            <button style={{ ...S.btn(C.orange), flex: 1 }} onClick={saveAllFuture} disabled={saving}>{t('edit.all_future')}</button>
-          )}
-        </div>
+        {isRecurring ? (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button style={{ ...S.btn(), flex: 1 }} onClick={saveOnce} disabled={saving}>{t('edit.this_time')}</button>
+              <button style={{ ...S.btn(C.orange), flex: 1 }} onClick={saveAllFuture} disabled={saving}>{t('edit.all_future')}</button>
+            </div>
+            <div style={{ fontSize: 10, color: C.textLow, marginBottom: 20 }}>{t('edit.series_note')}</div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <button style={{ ...S.btn(), flex: 1 }} onClick={saveAllFuture} disabled={saving}>{t('edit.save')}</button>
+          </div>
+        )}
 
         <button
           onClick={toggleSkip} disabled={saving}
