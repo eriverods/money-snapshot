@@ -61,7 +61,7 @@ const C = {
 const S = {
   root: { fontFamily: "'Lato', sans-serif", background: C.bg, minHeight: '100vh', color: C.text, paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' },
   card: { background: C.surface, borderRadius: 14, padding: 14, marginBottom: 12, border: `1px solid ${C.border}` },
-  inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' },
+  inp: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box', outline: 'none', WebkitAppearance: 'none', appearance: 'none' },
   sel: { background: 'var(--c-input-bg)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '9px 12px', color: C.text, fontSize: 14, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' },
   lbl: { fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
   btn: (bg, light) => ({ background: bg || C.purple, border: 'none', borderRadius: 8, padding: '10px 18px', color: light ? C.textMid : 'var(--c-btn-text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: 0.3 }),
@@ -467,14 +467,14 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
 
         <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{t('edit.description')}</div>
         <input
-          style={{ ...S.inp, width: '100%', marginBottom: 14 }}
+          style={{ ...S.inp, marginBottom: 14 }}
           value={editLabel}
           onChange={e => setEditLabel(e.target.value)}
         />
 
         <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>{t('edit.date')}</div>
         <input
-          style={{ ...S.inp, width: '100%', marginBottom: 14 }}
+          style={{ ...S.inp, marginBottom: 14 }}
           type="date"
           value={editDate}
           onChange={e => setEditDate(e.target.value)}
