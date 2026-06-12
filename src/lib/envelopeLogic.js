@@ -84,6 +84,55 @@ export function spentFor(env) {
   return parseFloat(env.spent_amount) || 0
 }
 
+// ─── CATCHALL ("WHATEVER") ────────────────────────────────────────────────────
+export function isCatchall(env) {
+  return !!(env && env.is_catchall)
+}
+
+// Real (allocatable) envelopes — everything except the catchall.
+export function realEnvelopes(envelopes) {
+  return (envelopes || []).filter(e => !isCatchall(e))
+}
+
+// Remaining money "reserved" by an envelope, for the unallocated calculation.
+// The catchall reserves nothing (no allocation ever). A real envelope reserves
+// what's left of its allocation; overspend doesn't claw money back (floor at 0).
+export function envelopeReserved(env, spent) {
+  if (isCatchall(env)) return 0
+  return Math.max(0, availableFor(env) - spent)
+}
+
+// Money flowed THROUGH an envelope this cycle (neutral catchall framing). For
+// the catchall (link_type 'none', no window) we scope to the cycle window when
+// one is given, else all assigned expenses.
+export function flowThrough(env, transactions, cycleWindow, today = todayStr()) {
+  let total = 0
+  for (const t of transactions || []) {
+    if (String(t.envelope_id) !== String(env.id)) continue
+    if (t.type !== 'expense') continue
+    const d = t.date
+    if (!d || d > today) continue
+    if (cycleWindow && cycleWindow.start && d < cycleWindow.start) continue
+    if (cycleWindow && cycleWindow.end && d > cycleWindow.end) continue
+    total += parseFloat(t.amount) || 0
+  }
+  return total
+}
+
+// ─── UNALLOCATED ("money not yet given a job") ────────────────────────────────
+// unallocated = sum(account balances) − sum(envelope remaining) − upcoming bills.
+// Safe-to-spend derives from envelope remainders, not raw bank balance, so money
+// already promised to an envelope isn't double-counted as spendable.
+export function computeUnallocated({ totalCash = 0, envelopes = [], spentByEnv = {}, billsTotal = 0 }) {
+  let reserved = 0
+  for (const env of envelopes) {
+    if (isCatchall(env)) continue
+    const spent = spentByEnv[env.id] ?? 0
+    reserved += envelopeReserved(env, spent)
+  }
+  return (parseFloat(totalCash) || 0) - reserved - (parseFloat(billsTotal) || 0)
+}
+
 export function leftoverFor(env, spent) {
   const s = spent != null ? spent : (parseFloat(env.spent_amount) || 0)
   return availableFor(env) - s

@@ -4,8 +4,9 @@ import ReconcileModal from './ReconcileModal'
 import CyclesTab from './CyclesTab'
 import GoalsTab from './GoalsTab'
 import EnvelopesTab, { upsertMerchantHint } from './EnvelopesTab'
-import { computeEnvelopeSpent } from './lib/envelopeLogic'
+import { computeEnvelopeSpent, computeUnallocated, isCatchall } from './lib/envelopeLogic'
 import { inboxTransactions, suggestEnvelopeId } from './lib/envelopeInbox'
+import { toDateStr, parseDateLocal, expandTx, getOverride, billsBeforeNextIncome } from './lib/cashflowDerive'
 import { useT, LangProvider, LANGUAGES } from './i18n'
 
 // ─── UNSAVED-CHANGES GUARD ──────────────────────────────────────────────────────
@@ -87,18 +88,10 @@ function fmtAmt(val) {
   return fmt(n)
 }
 
-// Local calendar date as YYYY-MM-DD (avoids the UTC off-by-one that
-// toISOString() introduces in the evening / non-UTC timezones)
-function toDateStr(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+// toDateStr / parseDateLocal / expandTx / getOverride live in ./lib/cashflowDerive
+// (shared so safe-to-spend math has a single source of truth).
 
 function todayStr() { return toDateStr(new Date()) }
-
-function parseDateLocal(ds) { return new Date(ds + 'T00:00:00') }
 
 function fmtDateLabel(ds, t, locale = 'en-CA') {
   const d = parseDateLocal(ds)
@@ -112,32 +105,6 @@ function fmtDateLabel(ds, t, locale = 'en-CA') {
 
 function fmtMonthDay(ds, locale = 'en-CA') {
   return parseDateLocal(ds).toLocaleDateString(locale, { month: 'short', day: 'numeric' })
-}
-
-function expandTx(tx, startDate, endDate) {
-  const ws = parseDateLocal(startDate)
-  const we = parseDateLocal(endDate)
-  const txStart = parseDateLocal(tx.date)
-  const txEnd = tx.end_date ? parseDateLocal(tx.end_date) : null
-  const out = []
-  if (!tx.recurrence || tx.recurrence === 'once') {
-    if (txStart >= ws && txStart <= we) out.push(tx.date)
-    return out
-  }
-  let cur = new Date(txStart), safety = 0
-  while (cur <= we && safety++ < 500) {
-    if (txEnd && cur > txEnd) break
-    if (cur >= ws) out.push(toDateStr(cur))
-    if (tx.recurrence === 'weekly')        cur.setDate(cur.getDate() + 7)
-    else if (tx.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
-    else if (tx.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
-    else break
-  }
-  return out
-}
-
-function getOverride(overrides, txId, instanceDate) {
-  return overrides.find(o => String(o.transaction_id) === String(txId) && o.instance_date === instanceDate) || null
 }
 
 // ─── CATEGORIES ───────────────────────────────────────────────────────────────
@@ -313,11 +280,56 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
     })
   }, [bookId])
 
+  // The catchall is never an auto-suggestion (only a deliberate choice).
+  const catchallId = useMemo(() => envelopes.find(isCatchall)?.id || null, [envelopes])
+  // Categories → envelope map (many categories → one envelope) and the reverse.
+  const catByName = useMemo(() => {
+    const m = {}
+    for (const c of categories || []) m[c.name] = c
+    return m
+  }, [categories])
+  const catsByEnv = useMemo(() => {
+    const m = {}
+    for (const c of categories || []) {
+      if (!c.envelope_id) continue
+      ;(m[c.envelope_id] = m[c.envelope_id] || []).push(c)
+    }
+    return m
+  }, [categories])
+
   // Preselect the suggested envelope from the merchant hint (until user overrides).
-  const suggestedEnvId = useMemo(() => suggestEnvelopeId(form.label, hints), [form.label, hints])
+  const suggestedEnvId = useMemo(
+    () => suggestEnvelopeId(form.label, hints, { excludeIds: catchallId ? [catchallId] : [] }),
+    [form.label, hints, catchallId]
+  )
   useEffect(() => {
-    if (!envTouched && form.type === 'expense') setEnvId(suggestedEnvId || '')
-  }, [suggestedEnvId, envTouched, form.type])
+    if (!envTouched && form.type === 'expense') {
+      // A chosen category that maps to an envelope wins over the merchant hint;
+      // envelope-via-category is the single source of truth.
+      const viaCat = form.category && catByName[form.category]?.envelope_id
+      setEnvId(viaCat || suggestedEnvId || '')
+    }
+  }, [suggestedEnvId, envTouched, form.type, form.category, catByName])
+
+  // Picking an envelope with exactly one category auto-fills that category
+  // (only when category is still empty — never clobber an explicit choice).
+  function pickEnvelope(id) {
+    setEnvId(id)
+    setEnvTouched(true)
+    if (id && !form.category) {
+      const cats = catsByEnv[id]
+      if (cats && cats.length === 1) set('category', cats[0].name)
+    }
+  }
+
+  // Choosing a category that maps to an envelope auto-sets the envelope —
+  // envelope-via-category is the single source of truth, so the two can't
+  // disagree. (Expense rows only; income/transfer don't carry envelopes.)
+  function pickCategory(name) {
+    set('category', name)
+    const env = name && catByName[name]?.envelope_id
+    if (env && form.type === 'expense') { setEnvId(env); setEnvTouched(true) }
+  }
 
   async function save() {
     if (!form.label || !form.amount) return
@@ -372,7 +384,7 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
           </div>
           <div>
             <div style={S.lbl}>{t('tx.category')}</div>
-            <select style={S.sel} value={form.category} onChange={e => set('category', e.target.value)}>
+            <select style={S.sel} value={form.category} onChange={e => pickCategory(e.target.value)}>
               <option value="">{t('tx.none')}</option>
               {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
             </select>
@@ -384,9 +396,10 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
               {t('env.pick_envelope')}
               {envId && envId === suggestedEnvId && <span style={{ color: C.purple, marginLeft: 6, letterSpacing: 0 }}>· {t('env.pick_suggested')}</span>}
             </div>
-            <select style={S.sel} value={envId} onChange={e => { setEnvId(e.target.value); setEnvTouched(true) }}>
+            <select style={S.sel} value={envId} onChange={e => pickEnvelope(e.target.value)}>
               <option value="">{t('env.pick_none')}</option>
-              {envelopes.map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
+              {envelopes.filter(en => !isCatchall(en)).map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
+              {envelopes.filter(isCatchall).map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
             </select>
           </div>
         )}
@@ -590,42 +603,38 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
     if (bookId) loadEnvelopes()
   }, [bookId, today])
 
+  const hasAccounts = accounts.length > 0
   const totalCash = accounts
     .filter(a => a.include_in_safe_to_spend)
     .reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
 
-  const end14 = new Date(); end14.setDate(end14.getDate() + 14)
-  const end14str = toDateStr(end14)
+  // Bills before the next income occurrence (committed outflow this cycle).
+  const { nextIncomeDate, bills: billsUntilNext, billsTotal } = useMemo(
+    () => billsBeforeNextIncome(transactions, overrides, today, 14),
+    [transactions, overrides, today]
+  )
 
-  // Find next income date within 14 days
-  const nextIncomeDate = useMemo(() => {
-    const dates = []
-    for (const tx of transactions.filter(t => t.type === 'income')) {
-      dates.push(...expandTx(tx, today, end14str))
+  // Spent per (real) envelope, derived from assigned transactions.
+  const spentByEnv = useMemo(() => {
+    const m = {}
+    for (const env of envelopes) m[env.id] = computeEnvelopeSpent(env, transactions, today)
+    return m
+  }, [envelopes, transactions, today])
+
+  // Safe to spend now derives from envelope remainders, not raw bank balance:
+  // money already given a job (an envelope) isn't counted as spendable again.
+  const safeToSpend = useMemo(
+    () => computeUnallocated({ totalCash, envelopes, spentByEnv, billsTotal }),
+    [totalCash, envelopes, spentByEnv, billsTotal]
+  )
+  const reservedTotal = useMemo(() => {
+    let r = 0
+    for (const env of envelopes) {
+      if (isCatchall(env)) continue
+      r += Math.max(0, ((parseFloat(env.allocated_amount) || 0) + (parseFloat(env.carryover_amount) || 0)) - (spentByEnv[env.id] ?? 0))
     }
-    dates.sort()
-    return dates[0] || null
-  }, [transactions, today, end14str])
-
-  // Bills strictly before next income (or all 14d if no income coming)
-  const billsUntilNext = useMemo(() => {
-    const cutoff = nextIncomeDate || end14str
-    const items = []
-    for (const tx of transactions.filter(t => t.type === 'expense')) {
-      const dates = expandTx(tx, today, cutoff)
-      for (const d of dates) {
-        if (nextIncomeDate && d >= nextIncomeDate) continue
-        const ov = getOverride(overrides, tx.id, d)
-        if (ov?.action === 'skipped') continue
-        const amt = ov?.action === 'modified' ? (parseFloat(ov.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
-        items.push({ tx, date: d, amt })
-      }
-    }
-    return items.sort((a, b) => a.date.localeCompare(b.date))
-  }, [transactions, overrides, today, nextIncomeDate, end14str])
-
-  const billsTotal = billsUntilNext.reduce((s, i) => s + i.amt, 0)
-  const safeToSpend = totalCash - billsTotal
+    return r
+  }, [envelopes, spentByEnv])
 
   // 14-day calendar grid
   const calendarDays = useMemo(() => {
@@ -655,17 +664,27 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
 
   return (
     <div>
-      {/* Safe to spend hero */}
-      <div id="guide-safe-to-spend" style={{ background: safeToSpend >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${safeToSpend >= 0 ? C.green : C.red}` }}>
-        <div style={{ fontSize: 10, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>
-          {t('overview.safe_to_spend')}{nextIncomeDate ? ` · ${t('overview.til', { date: fmtDateLabel(nextIncomeDate, t, locale) })}` : ` · ${t('overview.14d')}`}
+      {/* Safe to spend hero — derived from envelope remainders, never raw balance */}
+      {!hasAccounts ? (
+        <div id="guide-safe-to-spend" style={{ background: C.surface, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px dashed ${C.purple}` }}>
+          <div style={{ fontSize: 10, color: C.purple, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 6 }}>{t('overview.safe_to_spend')}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{t('overview.setup_title')}</div>
+          <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 12 }}>{t('overview.setup_body')}</div>
+          <button onClick={onGoToAccounts} style={{ ...S.btn(C.purple), width: '100%' }}>{t('overview.setup_cta')}</button>
         </div>
-        <div style={{ fontSize: 36, fontWeight: 700, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: -1 }}>{fmtAmt(safeToSpend, locale)}</div>
-        <div style={{ fontSize: 11, color: safeToSpend >= 0 ? C.green : C.red, marginTop: 4, display: 'flex', gap: 16 }}>
-          <span>{t('overview.cash', { amount: fmtAmt(totalCash, locale) })}</span>
-          {billsTotal > 0 && <span>{t('overview.bills_sub', { amount: fmtAmt(billsTotal, locale) })}</span>}
+      ) : (
+        <div id="guide-safe-to-spend" style={{ background: safeToSpend >= 0 ? C.greenBg : C.redBg, borderRadius: 14, padding: '18px 16px', marginBottom: 12, border: `1px solid ${safeToSpend >= 0 ? C.green : C.red}` }}>
+          <div style={{ fontSize: 10, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 4 }}>
+            {t('overview.safe_to_spend')}{nextIncomeDate ? ` · ${t('overview.til', { date: fmtDateLabel(nextIncomeDate, t, locale) })}` : ` · ${t('overview.14d')}`}
+          </div>
+          <div style={{ fontSize: 36, fontWeight: 700, color: safeToSpend >= 0 ? C.green : C.red, letterSpacing: -1 }}>{fmtAmt(safeToSpend, locale)}</div>
+          <div style={{ fontSize: 11, color: safeToSpend >= 0 ? C.green : C.red, marginTop: 4, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span>{t('overview.cash', { amount: fmtAmt(totalCash, locale) })}</span>
+            {reservedTotal > 0 && <span>{t('overview.in_envelopes', { amount: fmtAmt(reservedTotal, locale) })}</span>}
+            {billsTotal > 0 && <span>{t('overview.bills_sub', { amount: fmtAmt(billsTotal, locale) })}</span>}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Needs a home — gentle deep-link to the inbox */}
       {inboxCount > 0 && (
@@ -793,21 +812,22 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
         </div>
       )}
 
-      {/* Envelopes — direct visibility of every active envelope */}
-      {envelopes.length > 0 && (
+      {/* Envelopes — direct visibility of every active envelope (catchall excluded:
+          it has no allocation, so no bar). Overspend stays neutral, never red. */}
+      {envelopes.some(e => !isCatchall(e)) && (
         <div style={S.card}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={S.lbl}>{t('overview.envelopes')}</div>
             <button onClick={onGoToEnvelopes} style={{ background: 'none', border: 'none', color: C.purple, fontSize: 11, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>{t('overview.go_envelopes')}</button>
           </div>
-          {envelopes.map(env => {
+          {envelopes.filter(e => !isCatchall(e)).map(env => {
             const available = envAvailable(env)
-            const spent = computeEnvelopeSpent(env, transactions, today)
+            const spent = spentByEnv[env.id] ?? computeEnvelopeSpent(env, transactions, today)
             const remaining = available - spent
             const pct = available > 0 ? Math.min(100, (spent / available) * 100) : 0
             const isOver = spent > available
             const tight = available > 0 && spent / available >= 0.9
-            const barColor = isOver ? C.red : tight ? C.orange : C.green
+            const barColor = tight || isOver ? C.orange : C.green
             return (
               <div key={env.id} onClick={onGoToEnvelopes} style={{ marginBottom: 12, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
@@ -817,7 +837,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
                       : env.color && <div style={{ width: 8, height: 8, borderRadius: '50%', background: env.color, flexShrink: 0 }} />}
                     <span style={{ fontSize: 13, fontWeight: 600 }}>{env.name}</span>
                   </div>
-                  <span style={{ fontSize: 11, color: isOver ? C.red : tight ? C.orange : C.textMid }}>
+                  <span style={{ fontSize: 11, color: tight || isOver ? C.orange : C.textMid }}>
                     {isOver ? t('overview.over', { amount: fmt(Math.abs(remaining), locale) }) : t('overview.left', { amount: fmt(remaining, locale) })}
                   </span>
                 </div>
@@ -2755,8 +2775,9 @@ function MainApp({ session, book, allBooks, onSwitchBook, onReloadBooks, onSignO
                 bookId={book.id} onRefresh={loadData} categories={categories} />
             )}
             {activeTab === 'envelopes' && (
-              <EnvelopesTab bookId={book.id} transactions={transactions} onRefresh={loadData}
-                onGoToCycles={() => setActiveTab('cycles')} />
+              <EnvelopesTab bookId={book.id} transactions={transactions} accounts={accounts} overrides={overrides}
+                categories={categories} onRefresh={loadData}
+                onGoToCycles={() => setActiveTab('cycles')} onGoToAccounts={() => setActiveTab('accounts')} />
             )}
             {activeTab === 'cycles' && (
               <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />

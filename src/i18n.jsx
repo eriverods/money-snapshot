@@ -110,7 +110,11 @@ const DICT = {
     'overview.add_first': 'Add your first account →',
     'overview.tracking_only': 'tracking only',
     'overview.cash': '{amount} cash',
+    'overview.in_envelopes': '− {amount} in envelopes',
     'overview.bills_sub': '− {amount} bills',
+    'overview.setup_title': "Let's get your money on the map",
+    'overview.setup_body': 'Add an account and we can show what’s safe to spend.',
+    'overview.setup_cta': 'Add an account',
     'overview.today': 'Today',
     'overview.next_14': 'Next 14 days',
     'overview.bills_til': 'Bills til {date}',
@@ -389,6 +393,7 @@ const DICT = {
     'cycles.envelope_name': 'Envelope name',
     'cycles.add_envelope': '+ Add envelope',
     'cycles.start_cycle': 'Start cycle ✓',
+    'cycles.create_failed': "Couldn't start the cycle — give it another try?",
     'cycles.back': '← back',
     'cycles.loading_preview': 'Loading preview…',
     'cycles.ready_title': 'Ready to create cycle?',
@@ -525,6 +530,47 @@ const DICT = {
     'env.pick_none': 'Skip — sort later',
     'env.pick_suggested': 'Suggested',
     'env.reassign': 'Move to envelope',
+    'env.save_failed': "Couldn't save that — give it another tap?",
+    'env.categories_label': 'Categories that live here',
+    'env.categories_hint': 'Spending in these categories lands in this envelope automatically.',
+
+    // No-allocation envelopes
+    'env.spent_no_alloc': 'spent so far',
+    'env.add_alloc_hint': 'No amount set — just tracking activity. Add one anytime.',
+
+    // Unallocated ("money not yet given a job")
+    'env.unallocated.label': 'not yet given a job',
+    'env.unallocated.give_job': 'Give it a job',
+    'env.unallocated.all_assigned': "Every dollar has a job right now. Nicely done.",
+
+    // The "Whatever" catchall
+    'env.edit_catchall': 'Edit Whatever',
+    'env.catchall_edit_note': "This is your catchall — a soft landing for anything you don't feel like sorting. Rename it if you like; it never needs an amount.",
+    'env.catchall.section': 'Soft landing',
+    'env.catchall.flowed': '{amount} flowed through here this cycle',
+    'env.catchall.flowed_short': 'flowed through this cycle',
+
+    // Composting nudge
+    'env.compost.title': '{merchant} shows up here a lot',
+    'env.compost.body': 'Want to give it a home of its own? Totally optional.',
+    'env.compost.accept': 'Give it a home',
+    'env.compost.no_thanks': 'No thanks',
+    'env.compost.pick': 'Pick an envelope for it',
+    'env.compost.moved': '{merchant} → {envelope}',
+
+    // Starter envelopes (first setup)
+    'env.starter.title': 'Start with a few envelopes',
+    'env.starter.subtitle': 'Pick the ones that fit. Rename or switch any off — you can change all of this anytime.',
+    'env.starter.alloc_subtitle': 'Roughly how much per cycle? Skip any you’re not sure about.',
+    'env.starter.on': 'On',
+    'env.starter.off': 'Off',
+    'env.starter.reassure': 'You can change all of this anytime.',
+    'env.starter.continue': 'Continue with {n} →',
+    'env.starter.manual': 'I’ll build my own',
+    'env.starter.amount_ph': 'amount',
+    'env.starter.create': 'Create envelopes',
+    'env.starter.decide_later': 'Decide amounts later',
+    'env.starter.back': '← Back',
 
     // Goals Tab
     'goals.total_saved': 'Total Saved',

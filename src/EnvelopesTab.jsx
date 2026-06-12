@@ -4,10 +4,14 @@ import { useT } from './i18n'
 import {
   todayStr, periodEndFor, isPeriodOver, daysLeftIn, availableFor,
   computeEnvelopeSpent, computeCloseOut, buildEnvelopeSuggestions, buildCycleSuggestions,
+  isCatchall, realEnvelopes, computeUnallocated, flowThrough,
 } from './lib/envelopeLogic'
 import {
   normalizeMerchant, suggestEnvelopeId, inboxTransactions, relativeDay,
+  buildCompostingSuggestion, prettyMerchant, STARTER_ENVELOPES,
 } from './lib/envelopeInbox'
+import { sanitizeEnvelopeName } from './lib/envelopeName'
+import { billsBeforeNextIncome } from './lib/cashflowDerive'
 
 const C = {
   bg:         'var(--c-bg)',
@@ -82,12 +86,15 @@ function Toast({ msg, onDone }) {
 }
 
 // ─── ENVELOPE CHIP PICKER ─────────────────────────────────────────────────────
+// Real envelopes first; the catchall ("Whatever") is always the final chip, so
+// assignment never stalls on "I don't know."
 function EnvChips({ envelopes, onPick, suggestedId }) {
+  const ordered = [...envelopes.filter(e => !isCatchall(e)), ...envelopes.filter(isCatchall)]
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-      {envelopes.map(e => (
+      {ordered.map(e => (
         <button key={e.id} onClick={() => onPick(e)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: e.id === suggestedId ? C.surfaceHigh : 'transparent', border: `1px solid ${e.id === suggestedId ? C.purple : C.border}`, borderRadius: 16, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: C.text }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 6, background: e.id === suggestedId ? C.surfaceHigh : 'transparent', border: `1px ${isCatchall(e) ? 'dashed' : 'solid'} ${e.id === suggestedId ? C.purple : C.border}`, borderRadius: 16, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: C.text }}>
           {e.emoji ? <span style={{ fontSize: 12 }}>{e.emoji}</span> : <Dot color={e.color} size={8} />}
           <span>{e.name}</span>
         </button>
@@ -184,11 +191,12 @@ function InboxCard({ tx, suggestion, envelopes, today, reduced, onAssign, t, loc
 }
 
 // ─── INBOX SECTION ────────────────────────────────────────────────────────────
-function Inbox({ items, envelopes, hints, today, reduced, onAssign, onAcceptAll, onCreateEnvelope, t, locale }) {
+function Inbox({ items, envelopes, hints, catchallId, today, reduced, onAssign, onAcceptAll, onCreateEnvelope, t, locale }) {
   const [forceOpen, setForceOpen] = useState(false)
+  const realCount = envelopes.filter(e => !isCatchall(e)).length
 
-  // New user with no envelopes → gentle CTA, never an empty void.
-  if (envelopes.length === 0) {
+  // New user with no real envelopes → gentle CTA, never an empty void.
+  if (realCount === 0) {
     return (
       <div style={{ ...S.card, border: `1px dashed ${C.border}`, background: 'transparent' }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>{t('env.inbox.no_envelopes_title')}</div>
@@ -209,7 +217,8 @@ function Inbox({ items, envelopes, hints, today, reduced, onAssign, onAcceptAll,
   }
 
   const suggestionsFor = (tx) => {
-    const id = suggestEnvelopeId(tx.label, hints)
+    // The catchall is never a suggestion — only a deliberate choice.
+    const id = suggestEnvelopeId(tx.label, hints, { excludeIds: catchallId ? [catchallId] : [] })
     return id ? envelopes.find(e => e.id === id) || null : null
   }
   const anySuggestions = items.some(tx => !!suggestionsFor(tx))
@@ -261,6 +270,29 @@ function EnvelopeHero({ env, spent, reduced, onOpen, onEdit, t, locale }) {
   const remainPct = available > 0 ? Math.max(0, Math.min(100, (remaining / available) * 100)) : 0
   const lowFrac = available > 0 ? remaining / available : 1
   const dleft = daysLeftIn(env)
+  const noAllocation = available <= 0
+
+  // No allocation yet → no fill bar, just activity. Valid and unstyled-as-empty.
+  if (noAllocation) {
+    return (
+      <div style={S.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <button onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', flex: 1 }}>
+            {env.emoji ? <span style={{ fontSize: 16 }}>{env.emoji}</span> : <Dot color={env.color} />}
+            <span style={{ fontSize: 14, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.name}</span>
+          </button>
+          <button onClick={onEdit} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{t('env.edit')}</button>
+        </div>
+        <button onClick={onOpen} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: C.text, letterSpacing: -0.5 }}>{fmt(spent)}</span>
+            <span style={{ fontSize: 12, color: C.textLow }}>{t('env.spent_no_alloc')}</span>
+          </div>
+        </button>
+        <div style={{ fontSize: 11, color: C.textMid, marginTop: 6, lineHeight: 1.4 }}>{t('env.add_alloc_hint')}</div>
+      </div>
+    )
+  }
 
   // Animate the fill in on mount (remaining/allocated). Skip under reduced motion.
   const [w, setW] = useState(reduced ? remainPct : 0)
@@ -316,17 +348,27 @@ function TxEditSheet({ tx, envelopes, currentEnvId, bookId, onClose, onSaved }) 
   const [envId, setEnvId] = useState(currentEnvId || '')
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [err, setErr] = useState(null)
 
   async function save() {
-    setSaving(true)
+    setSaving(true); setErr(null)
     const patch = { label: label.trim() || tx.label, amount: parseFloat(amount) || 0 }
     const newEnv = envId || null
-    if (String(newEnv) !== String(currentEnvId || '')) {
+    const envChanged = String(newEnv) !== String(currentEnvId || '')
+    if (envChanged) {
       patch.envelope_id = newEnv
       patch.assigned_at = newEnv ? new Date().toISOString() : null
     }
-    await supabase.from('cashflow_transactions').update(patch).eq('id', tx.id)
-    if (patch.envelope_id) await upsertMerchantHint(bookId, label.trim() || tx.label, newEnv)
+    // Surface errors and verify a row actually changed (0 rows w/ no error = RLS).
+    const { data, error } = await supabase.from('cashflow_transactions')
+      .update(patch).eq('id', tx.id).select('id')
+    if (error || !data || data.length === 0) {
+      setSaving(false)
+      setErr(error?.message || t('env.save_failed'))
+      return
+    }
+    // Learn the merchant→envelope hint only after a confirmed write.
+    if (envChanged && newEnv) await upsertMerchantHint(bookId, label.trim() || tx.label, newEnv)
     setSaving(false)
     onSaved()
   }
@@ -356,9 +398,11 @@ function TxEditSheet({ tx, envelopes, currentEnvId, bookId, onClose, onSaved }) 
         <div style={S.lbl}>{t('env.reassign')}</div>
         <select style={{ ...S.inp, marginBottom: 16 }} value={envId} onChange={e => setEnvId(e.target.value)}>
           <option value="">{t('env.pick_none')}</option>
-          {envelopes.map(e => <option key={e.id} value={e.id}>{e.emoji ? `${e.emoji} ` : ''}{e.name}</option>)}
+          {envelopes.filter(e => !isCatchall(e)).map(e => <option key={e.id} value={e.id}>{e.emoji ? `${e.emoji} ` : ''}{e.name}</option>)}
+          {envelopes.filter(isCatchall).map(e => <option key={e.id} value={e.id}>{e.emoji ? `${e.emoji} ` : ''}{e.name}</option>)}
         </select>
 
+        {err && <div style={{ fontSize: 12, color: C.orange, marginBottom: 10 }}>{err}</div>}
         <button style={{ ...S.btn(C.green), width: '100%', marginBottom: 10 }} onClick={save} disabled={saving}>
           {saving ? t('common.saving') : t('common.save')}
         </button>
@@ -388,6 +432,7 @@ function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, 
   const remaining = available - spent
   const isOver = spent > available
   const dleft = daysLeftIn(env)
+  const noAllocation = available <= 0  // catchall or an unallocated envelope
 
   // Transactions assigned to this envelope, grouped by day (newest first).
   const groups = useMemo(() => {
@@ -416,6 +461,12 @@ function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, 
           {env.emoji ? <span style={{ fontSize: 18 }}>{env.emoji}</span> : <Dot color={env.color} size={12} />}
           <span style={{ fontSize: 16, fontWeight: 700 }}>{env.name}</span>
         </div>
+        {noAllocation ? (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: -0.5 }}>{fmt(spent)}</span>
+            <span style={{ fontSize: 13, color: C.textLow }}>{isCatchall(env) ? t('env.catchall.flowed_short') : t('env.spent_no_alloc')}</span>
+          </div>
+        ) : (<>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
           <span style={{ fontSize: 30, fontWeight: 700, letterSpacing: -0.5 }}>{fmt(isOver ? 0 : remaining)}</span>
           <span style={{ fontSize: 13, color: C.textLow }}>{t('env.left_big')} · {t('env.of_allocated', { amount: fmt(available) })}</span>
@@ -428,6 +479,7 @@ function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, 
             ? t('env.over_by', { amount: fmt(spent - available) })
             : dleft != null ? t('env.detail_resets', { n: dleft }) : ' '}
         </div>
+        </>)}
       </div>
 
       {/* Transactions grouped by day */}
@@ -538,11 +590,19 @@ export async function upsertMerchantHint(bookId, label, envelopeId) {
 }
 
 // ─── CREATE / EDIT ENVELOPE SHEET ─────────────────────────────────────────────
-function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
+function EnvelopeSheet({ env, bookId, cycles, goals, categories = [], onSaved, onClose }) {
   const { t } = useT()
   const editing = !!env
+  const catchall = !!env?.is_catchall
   const today = todayStr()
   const activeCycle = cycles.find(c => today >= c.start_date && today <= c.end_date) || cycles[0] || null
+  // Categories that can map to this envelope (many categories → one envelope).
+  const liveCats = (categories || []).filter(c => !c.archived)
+  const [catIds, setCatIds] = useState(() =>
+    new Set((categories || []).filter(c => env && String(c.envelope_id) === String(env.id)).map(c => c.id)))
+  function toggleCat(id) {
+    setCatIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
 
   const [name, setName] = useState(env?.name || '')
   const [amount, setAmount] = useState(env ? String(parseFloat(env.allocated_amount).toFixed(2)) : '')
@@ -555,10 +615,24 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
   const [rolloverMode, setRolloverMode] = useState(env?.rollover_mode || 'rollover')
   const [goalId, setGoalId] = useState(env?.rollover_goal_id || (goals[0]?.id || ''))
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState(null)
+  const cleanName = sanitizeEnvelopeName(name)
 
   async function save() {
-    if (!name.trim()) return
+    // Allow any UTF-8 (emoji, accents); trim + cap by grapheme count only.
+    const cleanName = sanitizeEnvelopeName(name)
+    if (!cleanName) return
     setSaving(true)
+
+    // The catchall is renameable but never carries an allocation, link, or rollover.
+    if (catchall) {
+      const { error } = await supabase.from('envelopes')
+        .update({ name: cleanName, emoji: emoji || null, color: color || null }).eq('id', env.id)
+      setSaving(false)
+      if (error) { setSaveErr(error.message); return }
+      onSaved(); return
+    }
+
     let pStart = null, pEnd = null, cId = null
     if (linkType === 'time') {
       pStart = periodStart
@@ -571,7 +645,7 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
     }
     const row = {
       book_id: bookId,
-      name: name.trim(),
+      name: cleanName,
       allocated_amount: parseFloat(amount) || 0,
       emoji: emoji || null,
       color: color || null,
@@ -583,11 +657,31 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
       rollover_mode: rolloverMode,
       rollover_goal_id: rolloverMode === 'savings' ? (goalId || null) : null,
     }
+    let envId = env?.id || null
     if (editing) {
-      await supabase.from('envelopes').update(row).eq('id', env.id)
+      const { error } = await supabase.from('envelopes').update(row).eq('id', env.id)
+      if (error) { setSaving(false); setSaveErr(error.message); return }
     } else {
-      await supabase.from('envelopes').insert({ ...row, spent_amount: 0, carryover_amount: 0 })
+      const { data, error } = await supabase.from('envelopes')
+        .insert({ ...row, spent_amount: 0, carryover_amount: 0 }).select('id').single()
+      if (error || !data) { setSaving(false); setSaveErr(error?.message || t('env.save_failed')); return }
+      envId = data.id
     }
+
+    // Persist category → envelope mapping and reassign each changed category's
+    // transactions (apply_category_envelope) so envelope-via-category stays the
+    // single source of truth.
+    if (envId) {
+      const changed = []
+      for (const c of liveCats) {
+        const want = catIds.has(c.id)
+        const had = String(c.envelope_id) === String(envId)
+        if (want && !had) { await supabase.from('categories').update({ envelope_id: envId }).eq('id', c.id); changed.push(c.id) }
+        else if (!want && had) { await supabase.from('categories').update({ envelope_id: null }).eq('id', c.id) }
+      }
+      for (const id of changed) await supabase.rpc('apply_category_envelope', { p_category_id: id })
+    }
+
     setSaving(false)
     onSaved()
   }
@@ -596,23 +690,30 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
     <div style={S.sheet}>
       <div style={S.sheetInner}>
         <div style={S.sheetHeader}>
-          <span style={{ fontSize: 16, fontWeight: 700 }}>{editing ? t('env.edit_envelope') : t('env.new_envelope')}</span>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>{catchall ? t('env.edit_catchall') : editing ? t('env.edit_envelope') : t('env.new_envelope')}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textMid, fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
         <div style={{ overflowY: 'auto', flex: 1, padding: '16px 18px' }}>
+          {catchall && (
+            <div style={{ ...S.card, background: C.surfaceHigh, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5 }}>{t('env.catchall_edit_note')}</div>
+            </div>
+          )}
           <div style={{ marginBottom: 14 }}>
             <div style={S.lbl}>{t('env.name')}</div>
             <input style={S.inp} placeholder={t('env.name_placeholder')} value={name} onChange={e => setName(e.target.value)} autoFocus />
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-            <div style={{ flex: 1 }}>
-              <div style={S.lbl}>{t('env.amount')}</div>
-              <input style={S.inp} type="number" step="0.01" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
-            </div>
-            <div style={{ width: 90 }}>
+            {!catchall && (
+              <div style={{ flex: 1 }}>
+                <div style={S.lbl}>{t('env.amount')}</div>
+                <input style={S.inp} type="number" step="0.01" placeholder="0.00" value={amount} onChange={e => setAmount(e.target.value)} />
+              </div>
+            )}
+            <div style={{ width: catchall ? '100%' : 90 }}>
               <div style={S.lbl}>{t('env.emoji')}</div>
-              <input style={{ ...S.inp, textAlign: 'center' }} maxLength={2} placeholder="🛒" value={emoji} onChange={e => setEmoji(e.target.value)} />
+              <input style={{ ...S.inp, textAlign: 'center' }} maxLength={4} placeholder="🛒" value={emoji} onChange={e => setEmoji(e.target.value)} />
             </div>
           </div>
 
@@ -625,6 +726,25 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
             </div>
           </div>
 
+          {!catchall && (<>
+          {liveCats.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={S.lbl}>{t('env.categories_label')}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {liveCats.map(c => {
+                  const on = catIds.has(c.id)
+                  const elsewhere = !on && c.envelope_id && String(c.envelope_id) !== String(env?.id)
+                  return (
+                    <button key={c.id} onClick={() => toggleCat(c.id)}
+                      style={{ background: on ? C.surfaceHigh : 'transparent', border: `1px solid ${on ? C.purple : C.border}`, borderRadius: 16, padding: '5px 10px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: on ? C.purple : (elsewhere ? C.textLow : C.textMid) }}>
+                      {c.name}
+                    </button>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: C.textLow, marginTop: 6, lineHeight: 1.4 }}>{t('env.categories_hint')}</div>
+            </div>
+          )}
           <div style={{ marginBottom: 6 }}>
             <div style={S.lbl}>{t('env.refreshes')}</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -690,12 +810,15 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
               )}
             </div>
           )}
+          </>
+          )}
         </div>
         <div style={{ padding: '12px 18px 28px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
-          <button style={{ ...S.btn(C.green), width: '100%', opacity: saving || !name.trim() ? 0.6 : 1 }} disabled={saving || !name.trim()} onClick={save}>
+          {saveErr && <div style={{ fontSize: 12, color: C.orange, marginBottom: 8 }}>{saveErr}</div>}
+          <button style={{ ...S.btn(C.green), width: '100%', opacity: saving || !cleanName ? 0.6 : 1 }} disabled={saving || !cleanName} onClick={save}>
             {saving ? t('common.saving') : editing ? t('common.save') : t('env.create')}
           </button>
-          {editing && (
+          {editing && !catchall && (
             <button style={{ ...S.btn('transparent', true), width: '100%', marginTop: 8, color: C.red }} onClick={() => onSaved('delete')}>
               {t('env.delete')}
             </button>
@@ -706,8 +829,116 @@ function EnvelopeSheet({ env, bookId, cycles, goals, onSaved, onClose }) {
   )
 }
 
+// ─── CATCHALL ("WHATEVER") CARD ───────────────────────────────────────────────
+// No allocation, no fill bar, no low-balance state — just neutral information
+// about what flowed through this cycle.
+function CatchallCard({ env, flow, onOpen, onEdit, t, locale }) {
+  return (
+    <div style={{ ...S.card, border: `1px dashed ${C.border}` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <button onClick={onOpen} style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', flex: 1 }}>
+          {env.emoji ? <span style={{ fontSize: 16 }}>{env.emoji}</span> : <Dot color={env.color} />}
+          <span style={{ fontSize: 14, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.name}</span>
+        </button>
+        <button onClick={onEdit} style={{ background: 'none', border: 'none', color: C.textLow, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>{t('env.edit')}</button>
+      </div>
+      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.45 }}>
+        {t('env.catchall.flowed', { amount: fmt(flow) })}
+      </div>
+    </div>
+  )
+}
+
+// ─── STARTER ENVELOPES (first setup) ──────────────────────────────────────────
+// Offered instead of a blank screen. Pick a starter set, optionally give each a
+// rough per-cycle amount, or skip straight past allocation. Nothing here is
+// permanent — "you can change all of this anytime."
+function StarterSetup({ bookId, onDone, onManual, t }) {
+  const [step, setStep] = useState('pick') // 'pick' | 'allocate'
+  const [items, setItems] = useState(() => STARTER_ENVELOPES.map(s => ({ ...s, on: !s.optional, amount: '' })))
+  const [saving, setSaving] = useState(false)
+  const chosen = items.filter(it => it.on && sanitizeEnvelopeName(it.name))
+
+  function toggle(key) { setItems(prev => prev.map(it => it.key === key ? { ...it, on: !it.on } : it)) }
+  function rename(key, v) { setItems(prev => prev.map(it => it.key === key ? { ...it, name: v } : it)) }
+  function setAmt(key, v) { setItems(prev => prev.map(it => it.key === key ? { ...it, amount: v } : it)) }
+
+  async function create(withAmounts) {
+    setSaving(true)
+    const rows = chosen.map((it, i) => ({
+      book_id: bookId,
+      name: sanitizeEnvelopeName(it.name),
+      emoji: it.emoji || null,
+      color: it.color || null,
+      allocated_amount: withAmounts ? (parseFloat(it.amount) || 0) : 0,
+      spent_amount: 0, carryover_amount: 0,
+      link_type: 'none', rollover_mode: 'rollover',
+      display_order: i,
+    }))
+    if (rows.length) await supabase.from('envelopes').insert(rows)
+    setSaving(false)
+    onDone()
+  }
+
+  return (
+    <div style={{ paddingBottom: 24 }}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{t('env.starter.title')}</div>
+      <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.5, marginBottom: 16 }}>
+        {step === 'pick' ? t('env.starter.subtitle') : t('env.starter.alloc_subtitle')}
+      </div>
+
+      {step === 'pick' ? (
+        <>
+          {items.map(it => (
+            <div key={it.key} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 10, opacity: it.on ? 1 : 0.5 }}>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>{it.emoji}</span>
+              <input value={it.name} onChange={e => rename(it.key, e.target.value)}
+                style={{ ...S.inp, flex: 1, padding: '7px 10px' }} aria-label={t('env.name')} />
+              <button onClick={() => toggle(it.key)}
+                style={{ flexShrink: 0, background: it.on ? C.surfaceHigh : 'transparent', border: `1px solid ${it.on ? C.purple : C.border}`, borderRadius: 16, padding: '6px 12px', color: it.on ? C.purple : C.textMid, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {it.on ? t('env.starter.on') : t('env.starter.off')}
+              </button>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: C.textLow, lineHeight: 1.5, margin: '8px 2px 14px' }}>{t('env.starter.reassure')}</div>
+          <button style={{ ...S.btn(C.green), width: '100%', opacity: chosen.length ? 1 : 0.6 }}
+            disabled={!chosen.length} onClick={() => setStep('allocate')}>
+            {t('env.starter.continue', { n: chosen.length })}
+          </button>
+          <button style={{ ...S.btn('transparent', true), width: '100%', marginTop: 8, border: `1px solid ${C.border}` }} onClick={onManual}>
+            {t('env.starter.manual')}
+          </button>
+        </>
+      ) : (
+        <>
+          {chosen.map(it => (
+            <div key={it.key} style={{ ...S.card, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{it.emoji}</span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{sanitizeEnvelopeName(it.name)}</span>
+              <input type="number" step="0.01" inputMode="decimal" placeholder={t('env.starter.amount_ph')}
+                value={it.amount} onChange={e => setAmt(it.key, e.target.value)}
+                style={{ ...S.inp, width: 110, textAlign: 'right', padding: '7px 10px' }} />
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: C.textLow, lineHeight: 1.5, margin: '8px 2px 14px' }}>{t('env.starter.reassure')}</div>
+          <button style={{ ...S.btn(C.green), width: '100%' }} disabled={saving} onClick={() => create(true)}>
+            {saving ? t('common.saving') : t('env.starter.create')}
+          </button>
+          <button style={{ ...S.btn('transparent', true), width: '100%', marginTop: 8, border: `1px dashed ${C.purple}`, color: C.purple }}
+            disabled={saving} onClick={() => create(false)}>
+            {t('env.starter.decide_later')}
+          </button>
+          <button style={{ ...S.btn('transparent', true), width: '100%', marginTop: 8 }} onClick={() => setStep('pick')}>
+            {t('env.starter.back')}
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── MAIN ENVELOPES TAB ───────────────────────────────────────────────────────
-export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onGoToCycles, openInbox }) {
+export default function EnvelopesTab({ bookId, transactions = [], accounts = [], overrides = [], categories = [], onRefresh, onGoToCycles, onGoToAccounts, openInbox }) {
   const { t, locale } = useT()
   const reduced = useReducedMotion()
   const today = todayStr()
@@ -716,12 +947,14 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
   const [cycles, setCycles] = useState([])
   const [goals, setGoals] = useState([])
   const [hints, setHints] = useState([])
+  const [dismissals, setDismissals] = useState([])
   const [loading, setLoading] = useState(true)
   const [sheet, setSheet] = useState(null)        // null | 'new' | envelope object
   const [view, setView] = useState('list')        // 'list' | 'all' | { detail: env }
   const [showOverflow, setShowOverflow] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   const [dismissedSugg, setDismissedSugg] = useState([])
+  const [compostPick, setCompostPick] = useState(false)  // composting nudge → picker open
   const [toast, setToast] = useState(null)
 
   useEffect(() => { load() }, [bookId])
@@ -729,18 +962,21 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
   async function load(silent = false) {
     if (!silent) setLoading(true)
     try {
-      const [{ data: envs }, { data: hist }, { data: cyc }, { data: gls }, { data: hnt }] = await Promise.all([
-        supabase.from('envelopes').select('*').eq('book_id', bookId).eq('archived', false).order('display_order'),
+      const [{ data: envs }, { data: hist }, { data: cyc }, { data: gls }, { data: hnt }, { data: dis }] = await Promise.all([
+        supabase.from('envelopes').select('*').eq('book_id', bookId).eq('archived', false)
+          .order('is_catchall').order('display_order'),
         supabase.from('envelope_period_history').select('*').eq('book_id', bookId).order('closed_at'),
         supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(12),
         supabase.from('savings_goals').select('*').eq('book_id', bookId).order('created_at'),
         supabase.from('merchant_envelope_hints').select('*').eq('book_id', bookId),
+        supabase.from('merchant_catchall_dismissals').select('*').eq('book_id', bookId),
       ])
       setEnvelopes(envs || [])
       setHistory(hist || [])
       setCycles(cyc || [])
       setGoals(gls || [])
       setHints(hnt || [])
+      setDismissals(dis || [])
     } catch (e) {
       console.error('EnvelopesTab load error:', e)
     } finally {
@@ -749,6 +985,10 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
   }
 
   function refreshAll() { load(true); onRefresh?.() }
+
+  // The permanent catchall ("Whatever") and the real (allocatable) envelopes.
+  const catchall = useMemo(() => envelopes.find(isCatchall) || null, [envelopes])
+  const realEnvs = useMemo(() => realEnvelopes(envelopes), [envelopes])
 
   // Spent per envelope, derived from assigned transactions.
   const spentByEnv = useMemo(() => {
@@ -760,28 +1000,91 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
   // Inbox items (unassigned recent spending).
   const inbox = useMemo(() => inboxTransactions(transactions, today), [transactions, today])
 
+  // One confirmed assignment write. Returns true only when a row actually changed
+  // (0 rows + no error ⇒ RLS); the hint is learned only after that confirmation.
+  async function commitAssign(tx, env) {
+    const { data, error } = await supabase.from('cashflow_transactions')
+      .update({ envelope_id: env.id, assigned_at: new Date().toISOString() })
+      .eq('id', tx.id).select('id')
+    if (error || !data || data.length === 0) {
+      return { ok: false, error: error?.message || t('env.save_failed') }
+    }
+    await upsertMerchantHint(bookId, tx.label, env.id)
+    return { ok: true }
+  }
+
   // Assign one transaction to an envelope (manual pick or accepted suggestion).
   async function assign(tx, env, viaSuggestion) {
-    await supabase.from('cashflow_transactions')
-      .update({ envelope_id: env.id, assigned_at: new Date().toISOString() }).eq('id', tx.id)
-    await upsertMerchantHint(bookId, tx.label, env.id)
+    const res = await commitAssign(tx, env)
+    if (!res.ok) { setToast(res.error); return }
     setToast(t('env.inbox.assigned_toast', { merchant: tx.label, envelope: env.name }))
     refreshAll()
   }
 
+  // "Accept all" only routes confidently-suggested rows — never the catchall.
   async function acceptAll() {
-    let n = 0
+    let n = 0, failed = 0
     for (const tx of inbox) {
-      const id = suggestEnvelopeId(tx.label, hints)
+      const id = suggestEnvelopeId(tx.label, hints, { excludeIds: catchall ? [catchall.id] : [] })
       if (!id) continue
       const env = envelopes.find(e => e.id === id)
-      if (!env) continue
-      await supabase.from('cashflow_transactions')
-        .update({ envelope_id: env.id, assigned_at: new Date().toISOString() }).eq('id', tx.id)
-      await upsertMerchantHint(bookId, tx.label, env.id)
-      n++
+      if (!env || isCatchall(env)) continue
+      const res = await commitAssign(tx, env)
+      if (res.ok) n++; else failed++
     }
     if (n > 0) setToast(t('env.inbox.count', { n }))
+    else if (failed > 0) setToast(t('env.save_failed'))
+    refreshAll()
+  }
+
+  // ── Unallocated ("money not yet given a job") ──────────────────────────────
+  const billsTotal = useMemo(
+    () => billsBeforeNextIncome(transactions, overrides, today, 14).billsTotal,
+    [transactions, overrides, today]
+  )
+  const totalCash = useMemo(
+    () => accounts.filter(a => a.include_in_safe_to_spend).reduce((s, a) => s + (parseFloat(a.balance) || 0), 0),
+    [accounts]
+  )
+  const unallocated = useMemo(
+    () => computeUnallocated({ totalCash, envelopes, spentByEnv, billsTotal }),
+    [totalCash, envelopes, spentByEnv, billsTotal]
+  )
+
+  // ── Composting nudge: a merchant repeatedly landing in the catchall ────────
+  const composting = useMemo(
+    () => buildCompostingSuggestion(hints, dismissals, catchall?.id),
+    [hints, dismissals, catchall]
+  )
+
+  // Accept the nudge: reassign that merchant's catchall transactions to a real
+  // envelope, learn the new hint, and drop the catchall hint so it won't re-fire.
+  async function acceptComposting(env) {
+    if (!composting || !catchall) return
+    const norm = composting.merchantNormalized
+    const movers = transactions.filter(
+      tx => String(tx.envelope_id) === String(catchall.id) && tx.type === 'expense' &&
+        normalizeMerchant(tx.label) === norm
+    )
+    for (const tx of movers) {
+      await supabase.from('cashflow_transactions')
+        .update({ envelope_id: env.id, assigned_at: new Date().toISOString() }).eq('id', tx.id)
+    }
+    await upsertMerchantHint(bookId, prettyMerchant(norm), env.id)
+    await supabase.from('merchant_envelope_hints').delete()
+      .eq('book_id', bookId).eq('merchant_normalized', norm).eq('envelope_id', catchall.id)
+    setCompostPick(false)
+    setToast(t('env.compost.moved', { merchant: prettyMerchant(norm), envelope: env.name }))
+    refreshAll()
+  }
+
+  // "No thanks" — remember the dismissal so we never raise this merchant again.
+  async function dismissComposting() {
+    if (!composting) return
+    await supabase.from('merchant_catchall_dismissals')
+      .upsert({ book_id: bookId, merchant_normalized: composting.merchantNormalized },
+        { onConflict: 'book_id,merchant_normalized' })
+    setCompostPick(false)
     refreshAll()
   }
 
@@ -825,13 +1128,15 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
     refreshAll()
   }
 
+  // Suggestions are about real (allocatable) envelopes — the catchall never
+  // participates in allocation or cycle-linking nudges.
   const suggestions = useMemo(() => {
     const all = [
-      ...buildEnvelopeSuggestions(envelopes, history),
-      ...buildCycleSuggestions(envelopes, cycles),
+      ...buildEnvelopeSuggestions(realEnvs, history),
+      ...buildCycleSuggestions(realEnvs, cycles),
     ]
     return all.filter(s => !dismissedSugg.includes(s.id))
-  }, [envelopes, history, cycles, dismissedSugg])
+  }, [realEnvs, history, cycles, dismissedSugg])
 
   async function applySuggestion(s) {
     if (s.kind === 'lower' || s.kind === 'raise') {
@@ -839,7 +1144,7 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
       refreshAll()
     } else if (s.kind === 'cycle_started') {
       const cyc = s.cycle
-      const ids = envelopes.filter(e => e.link_type !== 'cycle' || e.cycle_id !== cyc.id).map(e => e.id)
+      const ids = realEnvs.filter(e => e.link_type !== 'cycle' || e.cycle_id !== cyc.id).map(e => e.id)
       await supabase.from('envelopes').update({
         link_type: 'cycle', cycle_id: cyc.id, period_start: cyc.start_date, period_end: cyc.end_date,
       }).in('id', ids)
@@ -849,6 +1154,12 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
       onGoToCycles?.()
     }
   }
+
+  // The active pay-cycle window (scopes the catchall's "flowed this cycle").
+  const currentCycleWindow = useMemo(() => {
+    const c = cycles.find(c => today >= c.start_date && today <= c.end_date)
+    return c ? { start: c.start_date, end: c.end_date } : null
+  }, [cycles, today])
 
   // Days until the current pay cycle resets (for the header).
   const cycleDaysLeft = useMemo(() => {
@@ -864,6 +1175,20 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
       <div style={{ width: 24, height: 24, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.purple}`, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
     </div>
   )
+
+  // First setup (no real envelopes yet) → starter set instead of a blank screen.
+  // The create sheet can still open over it for fully-manual setup.
+  if (realEnvs.length === 0 && view === 'list') {
+    return <>
+      {!sheet && <StarterSetup bookId={bookId} t={t} onDone={refreshAll} onManual={() => setSheet('new')} />}
+      {sheet && (
+        <EnvelopeSheet env={sheet === 'new' ? null : sheet} bookId={bookId} cycles={cycles} goals={goals} categories={categories}
+          onSaved={(act) => { if (act === 'delete' && sheet !== 'new') { deleteEnvelope(sheet); return } setSheet(null); refreshAll() }}
+          onClose={() => setSheet(null)} />
+      )}
+      <Toast msg={toast} onDone={() => setToast(null)} />
+    </>
+  }
 
   // Detail / all-activity sub-views
   if (view === 'all') {
@@ -881,7 +1206,7 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
         onBack={() => setView('list')} onChanged={refreshAll} />
       <Toast msg={toast} onDone={() => setToast(null)} />
       {sheet && (
-        <EnvelopeSheet env={sheet === 'new' ? null : sheet} bookId={bookId} cycles={cycles} goals={goals}
+        <EnvelopeSheet env={sheet === 'new' ? null : sheet} bookId={bookId} cycles={cycles} goals={goals} categories={categories}
           onSaved={(act) => { if (act === 'delete' && sheet !== 'new') { deleteEnvelope(sheet); return } setSheet(null); refreshAll() }}
           onClose={() => setSheet(null)} />
       )}
@@ -921,9 +1246,47 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
         </div>
       )}
 
+      {/* Unallocated — "money not yet given a job" */}
+      {accounts.length > 0 && (
+        <div style={{ ...S.card, border: `1px solid ${unallocated > 0 ? C.purple : C.border}` }}>
+          {unallocated > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>{fmt(unallocated)}</div>
+                <div style={{ fontSize: 12, color: C.textMid, marginTop: 2 }}>{t('env.unallocated.label')}</div>
+              </div>
+              <button onClick={() => setSheet('new')} style={{ ...S.btn(C.purple), flexShrink: 0 }}>{t('env.unallocated.give_job')}</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textMid, lineHeight: 1.45 }}>{t('env.unallocated.all_assigned')}</div>
+          )}
+        </div>
+      )}
+
       {/* Needs-a-home inbox */}
-      <Inbox items={inbox} envelopes={envelopes} hints={hints} today={today} reduced={reduced}
+      <Inbox items={inbox} envelopes={envelopes} hints={hints} catchallId={catchall?.id} today={today} reduced={reduced}
         onAssign={assign} onAcceptAll={acceptAll} onCreateEnvelope={() => setSheet('new')} t={t} locale={locale} />
+
+      {/* Composting nudge — one merchant keeps landing in the catchall */}
+      {composting && catchall && (
+        <div style={{ ...S.card, borderLeft: `3px solid ${C.purple}` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>
+            {t('env.compost.title', { merchant: prettyMerchant(composting.merchantNormalized) })}
+          </div>
+          <div style={{ fontSize: 12, color: C.textMid, lineHeight: 1.5, marginBottom: 10 }}>{t('env.compost.body')}</div>
+          {!compostPick ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ ...S.btn(C.purple), flex: 1 }} onClick={() => setCompostPick(true)}>{t('env.compost.accept')}</button>
+              <button style={{ ...S.btn(C.surfaceHigh, true) }} onClick={dismissComposting}>{t('env.compost.no_thanks')}</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 11, color: C.textLow, marginBottom: 2 }}>{t('env.compost.pick')}</div>
+              <EnvChips envelopes={realEnvs} onPick={acceptComposting} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ended periods → close-out prompt */}
       {endedEnvelopes.length > 0 && (
@@ -984,18 +1347,26 @@ export default function EnvelopesTab({ bookId, transactions = [], onRefresh, onG
         </>
       )}
 
-      {/* Envelope hero cards */}
-      {envelopes.length > 0 && <div style={S.secHead(C.purple)}>{t('env.your_envelopes')}</div>}
-      {envelopes.map(env => (
+      {/* Envelope hero cards (real envelopes) */}
+      {realEnvs.length > 0 && <div style={S.secHead(C.purple)}>{t('env.your_envelopes')}</div>}
+      {realEnvs.map(env => (
         <EnvelopeHero key={env.id} env={env} spent={spentByEnv[env.id] ?? 0} reduced={reduced}
           onOpen={() => setView({ detail: env })} onEdit={() => setSheet(env)} t={t} locale={locale} />
       ))}
 
-      {envelopes.length > 0 && (
-        <button onClick={() => setSheet('new')}
-          style={{ width: '100%', background: 'none', border: `1px dashed ${C.border}`, borderRadius: 10, color: C.purple, fontSize: 13, fontWeight: 700, padding: '13px 0', cursor: 'pointer', fontFamily: 'inherit', marginTop: 4 }}>
-          {t('env.add_envelope')}
-        </button>
+      <button onClick={() => setSheet('new')}
+        style={{ width: '100%', background: 'none', border: `1px dashed ${C.border}`, borderRadius: 10, color: C.purple, fontSize: 13, fontWeight: 700, padding: '13px 0', cursor: 'pointer', fontFamily: 'inherit', marginTop: 4 }}>
+        {t('env.add_envelope')}
+      </button>
+
+      {/* The permanent catchall, always last */}
+      {catchall && (
+        <>
+          <div style={S.secHead(C.textLow)}>{t('env.catchall.section')}</div>
+          <CatchallCard env={catchall}
+            flow={flowThrough(catchall, transactions, currentCycleWindow, today)}
+            onOpen={() => setView({ detail: catchall })} onEdit={() => setSheet(catchall)} t={t} locale={locale} />
+        </>
       )}
 
       {sheet && (

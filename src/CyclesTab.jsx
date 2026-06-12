@@ -252,6 +252,7 @@ function CreateCycleModal({ bookId, accounts, transactions, templates, onSave, o
     templates.map(t => ({ template_id: t.id, name: t.name, amount: String(parseFloat(t.default_amount).toFixed(2)), color: t.color || null }))
   )
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState(null)
 
   function handleStartChange(val) {
     setStartDate(val)
@@ -281,12 +282,14 @@ function CreateCycleModal({ bookId, accounts, transactions, templates, onSave, o
   const unallocated = available - totalAllocated
 
   async function save() {
-    setSaving(true)
+    setSaving(true); setSaveErr(null)
     const { data: cycle, error } = await supabase.from('pay_cycles').insert({
       book_id: bookId, start_date: startDate, end_date: endDate,
       starting_balance: startBal, income_actual: incomeInRange,
     }).select().single()
-    if (error || !cycle) { setSaving(false); return }
+    // Surface failures instead of silently swallowing them — a silent return
+    // here is what left new users stuck on a button that did nothing.
+    if (error || !cycle) { setSaving(false); setSaveErr(error?.message || t('cycles.create_failed')); return }
 
     const rows = allocs.filter(a => a.name && parseFloat(a.amount) > 0).map(a => ({
       cycle_id: cycle.id, template_id: a.template_id || null,
@@ -419,6 +422,7 @@ function CreateCycleModal({ bookId, accounts, transactions, templates, onSave, o
           </button>
         </div>
         <div style={{ padding: '12px 18px 28px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+          {saveErr && <div style={{ fontSize: 12, color: C.orange, marginBottom: 8 }}>{saveErr}</div>}
           <button style={{ ...S.btn(C.green), width: '100%', opacity: saving ? 0.7 : 1 }} onClick={save} disabled={saving}>
             {saving ? t('common.creating') : t('cycles.start_cycle')}
           </button>
