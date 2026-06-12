@@ -52,7 +52,7 @@ Deno.serve(async () => {
         .from("cashflow_transactions")
         .select("label, amount, recurrence, date, end_date")
         .eq("book_id", bookId)
-        .eq("type", "out")
+        .eq("type", "expense")
         .or(
           // one-time bill due tomorrow
           `and(recurrence.eq.once,date.eq.${tomorrowStr}),` +
