@@ -634,35 +634,43 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
             <button onClick={onGoToAccounts} style={{ ...S.btn(), fontSize: 12, padding: '8px 16px' }}>{t('overview.add_first')}</button>
           </div>
         )}
-        {[
-          { key: 'debit',   labelKey: 'overview.debit',   accts: accounts.filter(a => a.type !== 'credit' && a.type !== 'savings') },
-          { key: 'savings', labelKey: 'overview.savings', accts: accounts.filter(a => a.type === 'savings') },
-          { key: 'credit',  labelKey: 'overview.credit',  accts: accounts.filter(a => a.type === 'credit') },
-        ].filter(g => g.accts.length > 0).map((g, gi) => {
-          const subtotal = g.accts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
+        {(() => {
+          const groups = [
+            { key: 'debit',   labelKey: 'overview.debit',   accts: accounts.filter(a => a.type !== 'credit' && a.type !== 'savings') },
+            { key: 'savings', labelKey: 'overview.savings', accts: accounts.filter(a => a.type === 'savings') },
+            { key: 'credit',  labelKey: 'overview.credit',  accts: accounts.filter(a => a.type === 'credit') },
+          ].filter(g => g.accts.length > 0)
+          if (groups.length === 0) return null
           return (
-            <div key={g.key} style={{ marginTop: gi === 0 ? 0 : 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2, paddingBottom: 4, borderBottom: `1px solid ${C.border}` }}>
-                <span style={{ fontSize: 10, color: C.textLow, letterSpacing: 2, textTransform: 'uppercase', fontWeight: 700 }}>{t(g.labelKey)}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: subtotal >= 0 ? C.green : C.red }}>{fmt(subtotal, locale)}</span>
-              </div>
-              {g.accts.map((a, i) => (
-                <div key={a.id} onClick={() => onReconcile(a)} style={{ ...S.row, cursor: 'pointer', borderBottom: i < g.accts.length - 1 ? `1px solid ${C.border}` : 'none' }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.name}</div>
-                    <div style={{ fontSize: 10, color: a.track_only ? C.orange : C.textLow }}>
-                      {a.type}{a.track_only ? ` · ${t('overview.tracking_only')}` : ''}{a.classification ? ` · ${a.classification}` : ''}
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${groups.length}, 1fr)`, gap: 0 }}>
+              {groups.map((g, gi) => {
+                const subtotal = g.accts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0)
+                return (
+                  <div key={g.key} style={{ display: 'flex', flexDirection: 'column', height: '100%', paddingLeft: gi === 0 ? 0 : 10, paddingRight: gi === groups.length - 1 ? 0 : 10, borderRight: gi < groups.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+                    <div style={{ fontSize: 10, color: C.textLow, letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, paddingBottom: 6, marginBottom: 8, borderBottom: `1px solid ${C.border}` }}>{t(g.labelKey)}</div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {g.accts.map(a => (
+                        <div key={a.id} onClick={() => onReconcile(a)} style={{ cursor: 'pointer' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance, locale) || '--'}</div>
+                          {(a.track_only || a.classification) && (
+                            <div style={{ fontSize: 9, color: a.track_only ? C.orange : C.textLow, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {a.track_only ? t('overview.tracking_only') : a.classification}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 10, paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 8, color: C.textLow, textTransform: 'uppercase', letterSpacing: 1 }}>{t('overview.total')}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: subtotal >= 0 ? C.green : C.red }}>{fmt(subtotal, locale)}</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: (parseFloat(a.balance) || 0) >= 0 ? C.green : C.red }}>{fmt(a.balance, locale) || '--'}</div>
-                    <span style={{ fontSize: 10, color: C.purple }}>↺</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )
-        })}
+        })()}
       </div>
 
       {/* Today's activity */}
@@ -798,9 +806,9 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
                       </div>
                     </div>
                   ))}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-                    <span style={{ fontSize: 12, color: C.textLow }}>{t('overview.total')}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: dayNet >= 0 ? C.green : C.red }}>{dayNet > 0 ? '+' : ''}{fmt(dayNet, locale)}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: `2px solid ${C.border}` }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.textMid, textTransform: 'uppercase', letterSpacing: 1 }}>{t('overview.total')}</span>
+                    <span style={{ fontSize: 20, fontWeight: 800, color: dayNet >= 0 ? C.green : C.red }}>{dayNet > 0 ? '+' : ''}{fmt(dayNet, locale)}</span>
                   </div>
                 </>
               )}
