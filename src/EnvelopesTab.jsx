@@ -8,8 +8,10 @@ import {
 } from './lib/envelopeLogic'
 import {
   normalizeMerchant, suggestEnvelopeId, inboxTransactions, relativeDay,
-  buildCompostingSuggestion, prettyMerchant, STARTER_ENVELOPES,
+  buildCompostingSuggestion, prettyMerchant, STARTER_ENVELOPES, saveStarterEnvelopes,
 } from './lib/envelopeInbox'
+import { categoriesForEnvelope, applyEnvelopePick, applyCategoryPick } from './lib/txAssign'
+import { EnvelopePicker, CategoryPicker } from './EnvCatPicker'
 import { sanitizeEnvelopeName } from './lib/envelopeName'
 import { billsBeforeNextIncome } from './lib/cashflowDerive'
 
@@ -104,10 +106,22 @@ function EnvChips({ envelopes, onPick, suggestedId }) {
 }
 
 // ─── INBOX CARD (swipe-to-assign) ─────────────────────────────────────────────
-function InboxCard({ tx, suggestion, envelopes, today, reduced, onAssign, t, locale }) {
+function InboxCard({ tx, suggestion, envelopes, categories = [], today, reduced, onAssign, t, locale }) {
   const [dx, setDx] = useState(0)
   const [flung, setFlung] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [pendEnv, setPendEnv] = useState(null)  // chosen env awaiting an optional category
+  const [pendCat, setPendCat] = useState('')
+
+  // Pick an envelope in the "other…" picker. With 0 or 1 matching categories we
+  // assign right away (auto-selecting the single category); with more, we show a
+  // small, skippable category step.
+  function pickEnvInbox(e) {
+    const next = applyEnvelopePick({ category: '', envelopeId: e.id }, e.id, categories)
+    const cats = categoriesForEnvelope(categories, e.id)
+    if (cats.length > 1) { setPendEnv(e); setPendCat(next.category || '') }
+    else onAssign(tx, e, false, next.category || null)
+  }
   const startX = useRef(null)
   const THRESHOLD = 110
   const canSwipe = !reduced && !!suggestion && !flung
@@ -173,7 +187,7 @@ function InboxCard({ tx, suggestion, envelopes, today, reduced, onAssign, t, loc
               <span>{suggestion.name}</span>
             </button>
           )}
-          <button onClick={() => setExpanded(v => !v)}
+          <button onClick={() => { setExpanded(v => !v); setPendEnv(null) }}
             style={{ background: 'none', border: `1px dashed ${C.border}`, borderRadius: 16, padding: '5px 11px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: C.textMid }}>
             {suggestion ? t('env.inbox.other') : t('env.inbox.assign_to')}
           </button>
@@ -181,9 +195,21 @@ function InboxCard({ tx, suggestion, envelopes, today, reduced, onAssign, t, loc
             <span style={{ fontSize: 10, color: C.textLow, marginLeft: 'auto' }}>{t('env.inbox.swipe_hint')}</span>
           )}
         </div>
-        {expanded && (
-          <EnvChips envelopes={envelopes} suggestedId={suggestion?.id}
-            onPick={(e) => onAssign(tx, e, false)} />
+        {expanded && !pendEnv && (
+          <EnvChips envelopes={envelopes} suggestedId={suggestion?.id} onPick={pickEnvInbox} />
+        )}
+        {expanded && pendEnv && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: C.textMid, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {pendEnv.emoji ? <span>{pendEnv.emoji}</span> : <Dot color={pendEnv.color} size={8} />}
+              <span>{pendEnv.name}</span>
+            </div>
+            <CategoryPicker categories={categoriesForEnvelope(categories, pendEnv.id)} value={pendCat} onChange={setPendCat} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button style={{ ...S.btn(C.green), flex: 1 }} onClick={() => onAssign(tx, pendEnv, false, pendCat || null)}>{t('common.save')}</button>
+              <button style={{ ...S.btn('transparent', true), border: `1px solid ${C.border}` }} onClick={() => setPendEnv(null)}>{t('env.starter.back')}</button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -191,7 +217,7 @@ function InboxCard({ tx, suggestion, envelopes, today, reduced, onAssign, t, loc
 }
 
 // ─── INBOX SECTION ────────────────────────────────────────────────────────────
-function Inbox({ items, envelopes, hints, catchallId, today, reduced, onAssign, onAcceptAll, onCreateEnvelope, t, locale }) {
+function Inbox({ items, envelopes, categories = [], hints, catchallId, today, reduced, onAssign, onAcceptAll, onCreateEnvelope, t, locale }) {
   const [forceOpen, setForceOpen] = useState(false)
   const realCount = envelopes.filter(e => !isCatchall(e)).length
 
@@ -256,7 +282,7 @@ function Inbox({ items, envelopes, hints, catchallId, today, reduced, onAssign, 
       {Header}
       {items.map(tx => (
         <InboxCard key={tx.id} tx={tx} suggestion={suggestionsFor(tx)}
-          envelopes={envelopes} today={today} reduced={reduced} onAssign={onAssign} t={t} locale={locale} />
+          envelopes={envelopes} categories={categories} today={today} reduced={reduced} onAssign={onAssign} t={t} locale={locale} />
       ))}
     </div>
   )
@@ -341,24 +367,37 @@ function EnvelopeHero({ env, spent, reduced, onOpen, onEdit, t, locale }) {
 }
 
 // ─── TX EDIT / REASSIGN SHEET (universal tap-to-edit for envelope-scoped tx) ────
-function TxEditSheet({ tx, envelopes, currentEnvId, bookId, onClose, onSaved }) {
+function TxEditSheet({ tx, envelopes, categories = [], currentEnvId, bookId, onClose, onSaved }) {
   const { t } = useT()
   const [amount, setAmount] = useState(String((parseFloat(tx.amount) || 0).toFixed(2)))
   const [label, setLabel] = useState(tx.label || '')
-  const [envId, setEnvId] = useState(currentEnvId || '')
+  const [envId, setEnvId] = useState(currentEnvId ? String(currentEnvId) : '')
+  const [category, setCategory] = useState(tx.category || '')
   const [saving, setSaving] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [err, setErr] = useState(null)
+
+  // Envelope-via-category single source of truth (never conflicting states).
+  function pickEnvelope(id) {
+    const next = applyEnvelopePick({ category, envelopeId: envId }, id, categories)
+    setEnvId(next.envelopeId); setCategory(next.category)
+  }
+  function pickCategory(name) {
+    const next = applyCategoryPick({ category, envelopeId: envId }, name, categories)
+    setCategory(next.category); setEnvId(next.envelopeId)
+  }
 
   async function save() {
     setSaving(true); setErr(null)
     const patch = { label: label.trim() || tx.label, amount: parseFloat(amount) || 0 }
     const newEnv = envId || null
-    const envChanged = String(newEnv) !== String(currentEnvId || '')
+    const envChanged = String(newEnv || '') !== String(currentEnvId || '')
+    const catChanged = (category || '') !== (tx.category || '')
     if (envChanged) {
       patch.envelope_id = newEnv
       patch.assigned_at = newEnv ? new Date().toISOString() : null
     }
+    if (catChanged) patch.category = category || null
     // Surface errors and verify a row actually changed (0 rows w/ no error = RLS).
     const { data, error } = await supabase.from('cashflow_transactions')
       .update(patch).eq('id', tx.id).select('id')
@@ -396,11 +435,14 @@ function TxEditSheet({ tx, envelopes, currentEnvId, bookId, onClose, onSaved }) 
         <input style={{ ...S.inp, marginBottom: 12, fontSize: 20, fontWeight: 700, textAlign: 'center' }} type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} />
 
         <div style={S.lbl}>{t('env.reassign')}</div>
-        <select style={{ ...S.inp, marginBottom: 16 }} value={envId} onChange={e => setEnvId(e.target.value)}>
-          <option value="">{t('env.pick_none')}</option>
-          {envelopes.filter(e => !isCatchall(e)).map(e => <option key={e.id} value={e.id}>{e.emoji ? `${e.emoji} ` : ''}{e.name}</option>)}
-          {envelopes.filter(isCatchall).map(e => <option key={e.id} value={e.id}>{e.emoji ? `${e.emoji} ` : ''}{e.name}</option>)}
-        </select>
+        <EnvelopePicker envelopes={envelopes} value={envId} onChange={pickEnvelope} />
+        {envId && categoriesForEnvelope(categories, envId).length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={S.lbl}>{t('tx.category')}</div>
+            <CategoryPicker categories={categoriesForEnvelope(categories, envId)} value={category} onChange={pickCategory} />
+          </div>
+        )}
+        <div style={{ height: 16 }} />
 
         {err && <div style={{ fontSize: 12, color: C.orange, marginBottom: 10 }}>{err}</div>}
         <button style={{ ...S.btn(C.green), width: '100%', marginBottom: 10 }} onClick={save} disabled={saving}>
@@ -423,7 +465,7 @@ function TxEditSheet({ tx, envelopes, currentEnvId, bookId, onClose, onSaved }) 
 }
 
 // ─── ENVELOPE DETAIL VIEW ─────────────────────────────────────────────────────
-function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, locale, onBack, onChanged }) {
+function EnvelopeDetail({ env, transactions, envelopes, categories = [], bookId, today, reduced, locale, onBack, onChanged }) {
   const { t } = useT()
   const [editTx, setEditTx] = useState(null)
 
@@ -506,7 +548,7 @@ function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, 
       })}
 
       {editTx && (
-        <TxEditSheet tx={editTx} envelopes={envelopes} currentEnvId={env.id} bookId={bookId}
+        <TxEditSheet tx={editTx} envelopes={envelopes} categories={categories} currentEnvId={env.id} bookId={bookId}
           onClose={() => setEditTx(null)}
           onSaved={() => { setEditTx(null); onChanged() }} />
       )}
@@ -515,7 +557,7 @@ function EnvelopeDetail({ env, transactions, envelopes, bookId, today, reduced, 
 }
 
 // ─── ALL ACTIVITY VIEW ────────────────────────────────────────────────────────
-function AllActivity({ transactions, envelopes, bookId, today, locale, onBack, onChanged }) {
+function AllActivity({ transactions, envelopes, categories = [], bookId, today, locale, onBack, onChanged }) {
   const { t } = useT()
   const [editTx, setEditTx] = useState(null)
   const envById = useMemo(() => Object.fromEntries(envelopes.map(e => [String(e.id), e])), [envelopes])
@@ -560,7 +602,7 @@ function AllActivity({ transactions, envelopes, bookId, today, locale, onBack, o
         </div>
       ))}
       {editTx && (
-        <TxEditSheet tx={editTx} envelopes={envelopes} currentEnvId={editTx.envelope_id} bookId={bookId}
+        <TxEditSheet tx={editTx} envelopes={envelopes} categories={categories} currentEnvId={editTx.envelope_id} bookId={bookId}
           onClose={() => setEditTx(null)}
           onSaved={() => { setEditTx(null); onChanged() }} />
       )}
@@ -857,6 +899,7 @@ function StarterSetup({ bookId, onDone, onManual, t }) {
   const [step, setStep] = useState('pick') // 'pick' | 'allocate'
   const [items, setItems] = useState(() => STARTER_ENVELOPES.map(s => ({ ...s, on: !s.optional, amount: '' })))
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState(null)
   const chosen = items.filter(it => it.on && sanitizeEnvelopeName(it.name))
 
   function toggle(key) { setItems(prev => prev.map(it => it.key === key ? { ...it, on: !it.on } : it)) }
@@ -864,19 +907,14 @@ function StarterSetup({ bookId, onDone, onManual, t }) {
   function setAmt(key, v) { setItems(prev => prev.map(it => it.key === key ? { ...it, amount: v } : it)) }
 
   async function create(withAmounts) {
-    setSaving(true)
-    const rows = chosen.map((it, i) => ({
-      book_id: bookId,
-      name: sanitizeEnvelopeName(it.name),
-      emoji: it.emoji || null,
-      color: it.color || null,
-      allocated_amount: withAmounts ? (parseFloat(it.amount) || 0) : 0,
-      spent_amount: 0, carryover_amount: 0,
-      link_type: 'none', rollover_mode: 'rollover',
-      display_order: i,
-    }))
-    if (rows.length) await supabase.from('envelopes').insert(rows)
+    setSaving(true); setSaveErr(null)
+    // Surface any DB failure instead of a button that looks like it worked but
+    // silently dropped everything. Only advance on a confirmed write.
+    const res = await saveStarterEnvelopes(supabase, {
+      items, bookId, withAmounts, failMsg: t('env.starter.save_error'),
+    })
     setSaving(false)
+    if (!res.ok) { setSaveErr(res.error || t('env.starter.save_error')); return }
     onDone()
   }
 
@@ -921,6 +959,7 @@ function StarterSetup({ bookId, onDone, onManual, t }) {
             </div>
           ))}
           <div style={{ fontSize: 11, color: C.textLow, lineHeight: 1.5, margin: '8px 2px 14px' }}>{t('env.starter.reassure')}</div>
+          {saveErr && <div role="alert" style={{ fontSize: 12, color: C.orange, lineHeight: 1.5, margin: '0 2px 10px' }}>{saveErr}</div>}
           <button style={{ ...S.btn(C.green), width: '100%' }} disabled={saving} onClick={() => create(true)}>
             {saving ? t('common.saving') : t('env.starter.create')}
           </button>
@@ -1002,9 +1041,11 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
 
   // One confirmed assignment write. Returns true only when a row actually changed
   // (0 rows + no error ⇒ RLS); the hint is learned only after that confirmation.
-  async function commitAssign(tx, env) {
+  async function commitAssign(tx, env, category) {
+    const patch = { envelope_id: env.id, assigned_at: new Date().toISOString() }
+    if (category !== undefined) patch.category = category || null
     const { data, error } = await supabase.from('cashflow_transactions')
-      .update({ envelope_id: env.id, assigned_at: new Date().toISOString() })
+      .update(patch)
       .eq('id', tx.id).select('id')
     if (error || !data || data.length === 0) {
       return { ok: false, error: error?.message || t('env.save_failed') }
@@ -1013,9 +1054,10 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
     return { ok: true }
   }
 
-  // Assign one transaction to an envelope (manual pick or accepted suggestion).
-  async function assign(tx, env, viaSuggestion) {
-    const res = await commitAssign(tx, env)
+  // Assign one transaction to an envelope (manual pick or accepted suggestion),
+  // optionally carrying a category chosen in the "other…" picker.
+  async function assign(tx, env, viaSuggestion, category) {
+    const res = await commitAssign(tx, env, category)
     if (!res.ok) { setToast(res.error); return }
     setToast(t('env.inbox.assigned_toast', { merchant: tx.label, envelope: env.name }))
     refreshAll()
@@ -1193,7 +1235,7 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
   // Detail / all-activity sub-views
   if (view === 'all') {
     return <>
-      <AllActivity transactions={transactions} envelopes={envelopes} bookId={bookId} today={today} locale={locale}
+      <AllActivity transactions={transactions} envelopes={envelopes} categories={categories} bookId={bookId} today={today} locale={locale}
         onBack={() => setView('list')} onChanged={refreshAll} />
       <Toast msg={toast} onDone={() => setToast(null)} />
     </>
@@ -1201,7 +1243,7 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
   if (view && view.detail) {
     const env = envelopes.find(e => e.id === view.detail.id) || view.detail
     return <>
-      <EnvelopeDetail env={env} transactions={transactions} envelopes={envelopes} bookId={bookId}
+      <EnvelopeDetail env={env} transactions={transactions} envelopes={envelopes} categories={categories} bookId={bookId}
         today={today} reduced={reduced} locale={locale}
         onBack={() => setView('list')} onChanged={refreshAll} />
       <Toast msg={toast} onDone={() => setToast(null)} />
@@ -1264,7 +1306,7 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
       )}
 
       {/* Needs-a-home inbox */}
-      <Inbox items={inbox} envelopes={envelopes} hints={hints} catchallId={catchall?.id} today={today} reduced={reduced}
+      <Inbox items={inbox} envelopes={envelopes} categories={categories} hints={hints} catchallId={catchall?.id} today={today} reduced={reduced}
         onAssign={assign} onAcceptAll={acceptAll} onCreateEnvelope={() => setSheet('new')} t={t} locale={locale} />
 
       {/* Composting nudge — one merchant keeps landing in the catchall */}

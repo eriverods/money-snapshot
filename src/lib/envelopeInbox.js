@@ -1,6 +1,8 @@
 // ─── ENVELOPE INBOX + MERCHANT LEARNING ──────────────────────────────────────
 // Pure helpers for the "Needs a home" triage inbox and merchant→envelope hints.
 
+import { sanitizeEnvelopeName } from './envelopeName'
+
 // Normalize a transaction label into a stable merchant key:
 // lowercase, strip store numbers / locations / punctuation, collapse whitespace.
 export function normalizeMerchant(label) {
@@ -76,6 +78,47 @@ export const STARTER_ENVELOPES = [
   { key: 'fun',     name: 'Fun',           emoji: '🎮', color: '#c98f8f' },
   { key: 'pets',    name: 'Pets',          emoji: '🐾', color: '#6fc9bf', optional: true },
 ]
+
+// Build the envelope rows for the chosen starter set. `allocated_amount` is
+// ALWAYS a number — 0 when amounts are skipped ("decide later") — so the NOT NULL
+// allocation column is never handed a null. Only toggled-on, non-empty names are
+// included; names are sanitized (any UTF-8 kept, capped by grapheme count).
+export function buildStarterRows(items, bookId, withAmounts) {
+  return (items || [])
+    .filter(it => it.on && sanitizeEnvelopeName(it.name))
+    .map((it, i) => ({
+      book_id: bookId,
+      name: sanitizeEnvelopeName(it.name),
+      emoji: it.emoji || null,
+      color: it.color || null,
+      allocated_amount: withAmounts ? (parseFloat(it.amount) || 0) : 0,
+      spent_amount: 0,
+      carryover_amount: 0,
+      link_type: 'none',
+      rollover_mode: 'rollover',
+      display_order: i,
+    }))
+}
+
+// Persist the chosen starter envelopes and guarantee the permanent "Whatever"
+// catchall exists for the book. Surfaces any failure instead of pretending to
+// succeed: a 0-rows / mismatched-rows result (RLS, schema-cache miss) is treated
+// as failure so the UI can offer a calm retry rather than a button that lies.
+// Returns { ok: true } or { ok: false, error }.
+export async function saveStarterEnvelopes(client, { items, bookId, withAmounts, failMsg }) {
+  const rows = buildStarterRows(items, bookId, withAmounts)
+  if (rows.length) {
+    const { data, error } = await client.from('envelopes').insert(rows).select('id')
+    if (error || !data || data.length !== rows.length) {
+      return { ok: false, error: error?.message || failMsg || 'Save failed' }
+    }
+  }
+  // A brand-new book gets its catchall from a books-insert trigger, but provision
+  // it idempotently here too so first setup never lands without a "Whatever".
+  const { error: cErr } = await client.rpc('ensure_catchall_envelope', { p_book_id: bookId })
+  if (cErr) return { ok: false, error: cErr.message }
+  return { ok: true }
+}
 
 // Which transactions belong in the inbox: real spending that hasn't been
 // assigned to an envelope yet. We never surface future, income, or transfer

@@ -571,6 +571,7 @@ const DICT = {
     'env.starter.create': 'Create envelopes',
     'env.starter.decide_later': 'Decide amounts later',
     'env.starter.back': '← Back',
+    'env.starter.save_error': "Those didn't save just now — give it another tap?",
 
     // Goals Tab
     'goals.total_saved': 'Total Saved',
