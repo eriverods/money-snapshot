@@ -57,15 +57,44 @@ export function availableFor(env) {
   return (parseFloat(env.allocated_amount) || 0) + (parseFloat(env.carryover_amount) || 0)
 }
 
-export function leftoverFor(env) {
-  return availableFor(env) - (parseFloat(env.spent_amount) || 0)
+// Spent this period, derived from assigned expense transactions. For time/cycle
+// envelopes only transactions inside the current window count, so spend resets
+// naturally when the window rolls forward. Falls back to the legacy manual
+// `spent_amount` for envelopes that have no assigned transactions yet (so
+// pre-existing envelopes keep working until they're wired to real spending).
+export function computeEnvelopeSpent(env, transactions, today = todayStr()) {
+  const assigned = (transactions || []).filter(
+    t => String(t.envelope_id) === String(env.id) && t.type === 'expense'
+  )
+  if (!assigned.length) return parseFloat(env.spent_amount) || 0
+  let total = 0
+  for (const t of assigned) {
+    const d = t.date
+    if (!d || d > today) continue // don't count the future
+    if (env.link_type !== 'none') {
+      if (env.period_start && d < env.period_start) continue
+      if (env.period_end && d > env.period_end) continue
+    }
+    total += parseFloat(t.amount) || 0
+  }
+  return total
+}
+
+export function spentFor(env) {
+  return parseFloat(env.spent_amount) || 0
+}
+
+export function leftoverFor(env, spent) {
+  const s = spent != null ? spent : (parseFloat(env.spent_amount) || 0)
+  return availableFor(env) - s
 }
 
 // Compute the patch + history row for closing out one ended period and opening
 // the next. `nextStart`/`nextEnd` let cycle-linked envelopes adopt a fresh
 // cycle window; time-based envelopes roll their own window forward.
 export function computeCloseOut(env, opts = {}) {
-  const leftover = leftoverFor(env)
+  const spent = opts.spent != null ? opts.spent : (parseFloat(env.spent_amount) || 0)
+  const leftover = availableFor(env) - spent
   const base = parseFloat(env.allocated_amount) || 0
 
   let nextStart = opts.nextStart || null
@@ -89,7 +118,7 @@ export function computeCloseOut(env, opts = {}) {
     period_start: env.period_start,
     period_end: env.period_end,
     allocated_amount: availableFor(env),
-    spent_amount: parseFloat(env.spent_amount) || 0,
+    spent_amount: spent,
     leftover,
     rollover_mode: env.rollover_mode,
   }

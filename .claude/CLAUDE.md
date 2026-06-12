@@ -54,6 +54,18 @@ Checks if `auth.uid()` is either the book owner OR in `book_members`. Tables wit
 - **Behaviour learning** (`buildEnvelopeSuggestions`, `buildCycleSuggestions`): from history, suggests lowering/raising allocations for consistent under/over-spend; detects a new pay cycle started (offers to link envelopes) or, when none exists, suggests creating one.
 - i18n keys under `env.*` (en_CA; other languages fall back to en_CA per `t()` design).
 
+## Envelopes-First Tab Restructure ✓ Complete
+The Envelopes tab is now **transaction-driven** and answers "what's left?" at a glance.
+- **Data model** (migration `supabase/migrations/20260612_envelope_transactions.sql`):
+  - `cashflow_transactions` gains `envelope_id uuid NULL REFERENCES envelopes(id) ON DELETE SET NULL` + `assigned_at`. NULL `envelope_id` = lives in the inbox. Envelope delete → its transactions return to inbox (set null), hints cascade-deleted.
+  - `merchant_envelope_hints` (`book_id, merchant_normalized, envelope_id, assignment_count, last_assigned_at`, unique on the triple) — per-book so both partners benefit. RLS via `user_has_book_access`.
+  - `notification_settings` gains `inbox_reminders bool` + `last_inbox_nudge_at` (powers the push-nudge 3-day cap). Hints folded into `reset_book_data`.
+- **Spent is derived** from assigned expense transactions (`computeEnvelopeSpent` in `src/lib/envelopeLogic.js`), windowed by `period_start/period_end` for time/cycle envelopes (resets naturally when the window rolls). Falls back to legacy manual `spent_amount` only when no transactions are assigned. Hero number is **always amount left**, never spent.
+- **Inbox logic** in `src/lib/envelopeInbox.js`: `normalizeMerchant` (lowercase, strip store #s/locations/punct), `suggestEnvelopeId` (highest `assignment_count` for the merchant, confidence floor ≥ 2 — below floor shows no suggestion), `inboxTransactions` (unassigned recent expenses), `relativeDay`.
+- **EnvelopesTab** (`src/EnvelopesTab.jsx`) views: list (header w/ days-to-payday + ⋯ overflow → All activity / manage), "Needs a home" inbox (dashed border, accept-all, swipe-right-to-assign ~110px + toast, "other…" chip picker, empty/cleared/no-envelopes states, collapses to summary >15), envelope hero cards ($ left + animated fill bar in envelope color, neutral low/overspent copy — never red), envelope detail (day-grouped tx, tap → `TxEditSheet` reassign/edit/delete), All-activity (day-grouped, color dot per envelope / hollow if unassigned). `useReducedMotion()` disables swipe + bar animation. Receives `transactions` + `onRefresh` from `MainApp`.
+- **Integration**: Now tab shows a "N transactions need a home" card (badge capped 9+) → deep-links to inbox; AddTxModal has an optional envelope picker (preselected from merchant hint, skipping → inbox); merchant hints upserted via exported `upsertMerchantHint`. Push nudge in `send-notifications` Edge Function: inbox ≥ 5, max one per 3 days, neutral copy, respects `inbox_reminders` pref.
+- **No-shame rule**: all copy neutral/reassuring; color dots always paired with text labels.
+
 ## Phase 4 — Push Notifications ✓ Complete
 - SW handles push + notificationclick
 - Edge Function `supabase/functions/send-notifications/index.ts` runs hourly

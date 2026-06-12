@@ -3,7 +3,9 @@ import { supabase, missingConfig } from './lib/supabase'
 import ReconcileModal from './ReconcileModal'
 import CyclesTab from './CyclesTab'
 import GoalsTab from './GoalsTab'
-import EnvelopesTab from './EnvelopesTab'
+import EnvelopesTab, { upsertMerchantHint } from './EnvelopesTab'
+import { computeEnvelopeSpent } from './lib/envelopeLogic'
+import { inboxTransactions, suggestEnvelopeId } from './lib/envelopeInbox'
 import { useT, LangProvider, LANGUAGES } from './i18n'
 
 // ─── UNSAVED-CHANGES GUARD ──────────────────────────────────────────────────────
@@ -289,21 +291,46 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [envelopes, setEnvelopes] = useState([])
+  const [hints, setHints] = useState([])
+  const [envId, setEnvId] = useState('')
+  const [envTouched, setEnvTouched] = useState(false)
 
   // Pending edit = the user has started entering a transaction
   useUnsavedGuard(!saving && !!(form.label.trim() || form.amount || form.category || form.end_date))
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })) }
 
+  // Load envelopes + merchant hints so we can offer/preselect an envelope.
+  useEffect(() => {
+    if (!bookId) return
+    Promise.all([
+      supabase.from('envelopes').select('*').eq('book_id', bookId).eq('archived', false).order('display_order'),
+      supabase.from('merchant_envelope_hints').select('*').eq('book_id', bookId),
+    ]).then(([{ data: envs }, { data: hnt }]) => {
+      setEnvelopes(envs || [])
+      setHints(hnt || [])
+    })
+  }, [bookId])
+
+  // Preselect the suggested envelope from the merchant hint (until user overrides).
+  const suggestedEnvId = useMemo(() => suggestEnvelopeId(form.label, hints), [form.label, hints])
+  useEffect(() => {
+    if (!envTouched && form.type === 'expense') setEnvId(suggestedEnvId || '')
+  }, [suggestedEnvId, envTouched, form.type])
+
   async function save() {
     if (!form.label || !form.amount) return
     setSaving(true)
+    const useEnv = form.type === 'expense' ? (envId || null) : null
     const { error: e } = await supabase.from('cashflow_transactions').insert({
       label: form.label, amount: parseFloat(form.amount), type: form.type,
       account: form.account, date: form.date, recurrence: form.recurrence,
       end_date: form.end_date || null, book_id: bookId,
       category: form.category || null,
+      envelope_id: useEnv, assigned_at: useEnv ? new Date().toISOString() : null,
     })
+    if (!e && useEnv) await upsertMerchantHint(bookId, form.label, useEnv)
     setSaving(false)
     if (e) { setError(e.message); return }
     onSave()
@@ -351,6 +378,18 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
             </select>
           </div>
         </div>
+        {form.type === 'expense' && envelopes.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={S.lbl}>
+              {t('env.pick_envelope')}
+              {envId && envId === suggestedEnvId && <span style={{ color: C.purple, marginLeft: 6, letterSpacing: 0 }}>· {t('env.pick_suggested')}</span>}
+            </div>
+            <select style={S.sel} value={envId} onChange={e => { setEnvId(e.target.value); setEnvTouched(true) }}>
+              <option value="">{t('env.pick_none')}</option>
+              {envelopes.map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ marginBottom: 10 }}>
           <div style={S.lbl}>{t('tx.date')}</div>
           <input style={S.inp} type="date" value={form.date} onChange={e => set('date', e.target.value)} />
@@ -611,6 +650,9 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
   // Available = base allocation + anything rolled over from last period.
   const envAvailable = (env) => (parseFloat(env.allocated_amount) || 0) + (parseFloat(env.carryover_amount) || 0)
 
+  // Unassigned recent spending → "needs a home" inbox count (badge capped at 9+).
+  const inboxCount = useMemo(() => inboxTransactions(transactions, today).length, [transactions, today])
+
   return (
     <div>
       {/* Safe to spend hero */}
@@ -624,6 +666,20 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
           {billsTotal > 0 && <span>{t('overview.bills_sub', { amount: fmtAmt(billsTotal, locale) })}</span>}
         </div>
       </div>
+
+      {/* Needs a home — gentle deep-link to the inbox */}
+      {inboxCount > 0 && (
+        <button onClick={onGoToEnvelopes}
+          style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: C.surface, border: `1px dashed ${C.purple}`, borderRadius: 14, padding: '12px 14px', marginBottom: 12, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span style={{ flexShrink: 0, minWidth: 22, height: 22, borderRadius: 11, background: C.purple, color: 'var(--c-btn-text)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
+              {inboxCount > 9 ? '9+' : inboxCount}
+            </span>
+            <span style={{ fontSize: 13, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t('env.now_card', { n: inboxCount })}</span>
+          </div>
+          <span style={{ flexShrink: 0, fontSize: 12, color: C.purple, fontWeight: 700 }}>{t('env.now_card_sort')} →</span>
+        </button>
+      )}
 
       {/* Accounts */}
       <div style={S.card}>
@@ -746,7 +802,7 @@ function OverviewTab({ accounts, transactions, overrides, onReconcile, bookId, o
           </div>
           {envelopes.map(env => {
             const available = envAvailable(env)
-            const spent = parseFloat(env.spent_amount) || 0
+            const spent = computeEnvelopeSpent(env, transactions, today)
             const remaining = available - spent
             const pct = available > 0 ? Math.min(100, (spent / available) * 100) : 0
             const isOver = spent > available
@@ -1744,7 +1800,7 @@ function NotificationSheet({ session, bookId, onClose }) {
   const { t } = useT()
   const [permission, setPermission] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'denied')
   const [subscribed, setSubscribed] = useState(false)
-  const [settings, setSettings] = useState({ bill_reminders: true, low_balance_alerts: true, low_balance_threshold: '200', notify_hour_utc: '9' })
+  const [settings, setSettings] = useState({ bill_reminders: true, low_balance_alerts: true, inbox_reminders: true, low_balance_threshold: '200', notify_hour_utc: '9' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
@@ -1754,7 +1810,7 @@ function NotificationSheet({ session, bookId, onClose }) {
     async function load() {
       try {
         const { data: s } = await supabase.from('notification_settings').select('*').eq('book_id', bookId).maybeSingle()
-        if (s) setSettings({ bill_reminders: s.bill_reminders, low_balance_alerts: s.low_balance_alerts, low_balance_threshold: String(s.low_balance_threshold), notify_hour_utc: String(s.notify_hour_utc) })
+        if (s) setSettings({ bill_reminders: s.bill_reminders, low_balance_alerts: s.low_balance_alerts, inbox_reminders: s.inbox_reminders !== false, low_balance_threshold: String(s.low_balance_threshold), notify_hour_utc: String(s.notify_hour_utc) })
         if (supported && Notification.permission === 'granted') {
           const swReady = await Promise.race([
             navigator.serviceWorker.ready,
@@ -1828,7 +1884,7 @@ function NotificationSheet({ session, bookId, onClose }) {
     if (isNaN(threshold) || threshold < 0) { setErr(t('notif.invalid_threshold')); setSaving(false); return }
     if (isNaN(hour) || hour < 0 || hour > 23) { setErr(t('notif.invalid_hour')); setSaving(false); return }
     const { error } = await supabase.from('notification_settings').upsert(
-      { book_id: bookId, bill_reminders: settings.bill_reminders, low_balance_alerts: settings.low_balance_alerts, low_balance_threshold: threshold, notify_hour_utc: hour },
+      { book_id: bookId, bill_reminders: settings.bill_reminders, low_balance_alerts: settings.low_balance_alerts, inbox_reminders: settings.inbox_reminders, low_balance_threshold: threshold, notify_hour_utc: hour },
       { onConflict: 'book_id' }
     )
     if (error) setErr(error.message)
@@ -1889,6 +1945,15 @@ function NotificationSheet({ session, bookId, onClose }) {
                 </div>
                 <button onClick={() => setSettings(p => ({ ...p, low_balance_alerts: !p.low_balance_alerts }))}
                   style={{ background: settings.low_balance_alerts ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 12, width: 44, height: 24, cursor: 'pointer', transition: 'background 0.2s' }} />
+              </div>
+
+              <div style={{ ...S.card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{t('notif.inbox_reminders')}</div>
+                  <div style={{ fontSize: 11, color: C.textLow }}>{t('notif.inbox_hint')}</div>
+                </div>
+                <button onClick={() => setSettings(p => ({ ...p, inbox_reminders: !p.inbox_reminders }))}
+                  style={{ background: settings.inbox_reminders ? C.purple : C.surfaceHigh, border: 'none', borderRadius: 12, width: 44, height: 24, cursor: 'pointer', transition: 'background 0.2s' }} />
               </div>
 
               {settings.low_balance_alerts && (
@@ -2459,7 +2524,7 @@ function MainApp({ session, book, allBooks, onSwitchBook, onReloadBooks, onSignO
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState(() => {
     const saved = localStorage.getItem('lt_active_tab')
-    return ['now', 'ahead', 'transactions', 'cycles', 'goals', 'accounts'].includes(saved) ? saved : 'now'
+    return ['now', 'ahead', 'transactions', 'envelopes', 'cycles', 'goals', 'accounts'].includes(saved) ? saved : 'now'
   })
   const [reconcileAccount, setReconcileAccount] = useState(null)
   const [showAddTx, setShowAddTx] = useState(false)
@@ -2690,7 +2755,8 @@ function MainApp({ session, book, allBooks, onSwitchBook, onReloadBooks, onSignO
                 bookId={book.id} onRefresh={loadData} categories={categories} />
             )}
             {activeTab === 'envelopes' && (
-              <EnvelopesTab bookId={book.id} onGoToCycles={() => setActiveTab('cycles')} />
+              <EnvelopesTab bookId={book.id} transactions={transactions} onRefresh={loadData}
+                onGoToCycles={() => setActiveTab('cycles')} />
             )}
             {activeTab === 'cycles' && (
               <CyclesTab bookId={book.id} accounts={accounts} transactions={transactions} />

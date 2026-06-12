@@ -113,6 +113,35 @@ Deno.serve(async () => {
       }
     }
 
+    // ── Inbox nudge ───────────────────────────────────────────────────────────
+    // At most one gentle nudge every 3 days, only when 5+ transactions are
+    // waiting. Never daily, never guilt-toned.
+    if (s.inbox_reminders) {
+      const lastNudge = s.last_inbox_nudge_at ? new Date(s.last_inbox_nudge_at) : null
+      const threeDaysAgo = new Date(Date.now() - 3 * 86400000)
+      const eligible = !lastNudge || lastNudge < threeDaysAgo
+      if (eligible) {
+        const todayStr = new Date().toISOString().slice(0, 10)
+        const { count } = await supabase
+          .from("cashflow_transactions")
+          .select("id", { count: "exact", head: true })
+          .eq("book_id", bookId)
+          .eq("type", "expense")
+          .is("envelope_id", null)
+          .lte("date", todayStr)
+        if ((count || 0) >= 5) {
+          notifications.push({
+            title: "A quick sort is waiting",
+            body: `${count} transactions are waiting for a quick sort — takes about 30 seconds.`,
+          })
+          await supabase
+            .from("notification_settings")
+            .update({ last_inbox_nudge_at: new Date().toISOString() })
+            .eq("id", s.id)
+        }
+      }
+    }
+
     // ── Send ──────────────────────────────────────────────────────────────────
     for (const notif of notifications) {
       for (const sub of subs) {
