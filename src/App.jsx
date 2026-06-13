@@ -6,6 +6,8 @@ import GoalsTab from './GoalsTab'
 import EnvelopesTab, { upsertMerchantHint } from './EnvelopesTab'
 import { computeEnvelopeSpent, computeUnallocated, isCatchall } from './lib/envelopeLogic'
 import { inboxTransactions, suggestEnvelopeId } from './lib/envelopeInbox'
+import { categoriesForEnvelope, applyEnvelopePick, applyCategoryPick } from './lib/txAssign'
+import { EnvelopePicker, CategoryPicker } from './EnvCatPicker'
 import { toDateStr, parseDateLocal, expandTx, getOverride, billsBeforeNextIncome } from './lib/cashflowDerive'
 import { useT, LangProvider, LANGUAGES } from './i18n'
 
@@ -288,15 +290,6 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
     for (const c of categories || []) m[c.name] = c
     return m
   }, [categories])
-  const catsByEnv = useMemo(() => {
-    const m = {}
-    for (const c of categories || []) {
-      if (!c.envelope_id) continue
-      ;(m[c.envelope_id] = m[c.envelope_id] || []).push(c)
-    }
-    return m
-  }, [categories])
-
   // Preselect the suggested envelope from the merchant hint (until user overrides).
   const suggestedEnvId = useMemo(
     () => suggestEnvelopeId(form.label, hints, { excludeIds: catchallId ? [catchallId] : [] }),
@@ -311,24 +304,22 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
     }
   }, [suggestedEnvId, envTouched, form.type, form.category, catByName])
 
-  // Picking an envelope with exactly one category auto-fills that category
-  // (only when category is still empty — never clobber an explicit choice).
+  // Picking an envelope auto-fills its only category and drops a category that
+  // belonged to a different envelope, so the two controls can never conflict.
   function pickEnvelope(id) {
-    setEnvId(id)
     setEnvTouched(true)
-    if (id && !form.category) {
-      const cats = catsByEnv[id]
-      if (cats && cats.length === 1) set('category', cats[0].name)
-    }
+    const next = applyEnvelopePick({ category: form.category, envelopeId: envId }, id, categories)
+    setEnvId(next.envelopeId)
+    set('category', next.category)
   }
 
   // Choosing a category that maps to an envelope auto-sets the envelope —
   // envelope-via-category is the single source of truth, so the two can't
   // disagree. (Expense rows only; income/transfer don't carry envelopes.)
   function pickCategory(name) {
-    set('category', name)
-    const env = name && catByName[name]?.envelope_id
-    if (env && form.type === 'expense') { setEnvId(env); setEnvTouched(true) }
+    const next = applyCategoryPick({ category: form.category, envelopeId: envId }, name, categories)
+    set('category', next.category)
+    if (form.type === 'expense') { setEnvId(next.envelopeId); setEnvTouched(true) }
   }
 
   async function save() {
@@ -375,32 +366,47 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
           <div style={S.lbl}>{t('tx.label')}</div>
           <input style={S.inp} placeholder={t('tx.label_placeholder')} value={form.label} onChange={e => set('label', e.target.value)} autoFocus />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-          <div>
+        {/* Expense: account on its own row, then chip pickers. Income/transfer:
+            keep the account + category selects side by side (no envelope). */}
+        {form.type === 'expense' ? (
+          <div style={{ marginBottom: 10 }}>
             <div style={S.lbl}>{t('tx.account')}</div>
             <select style={S.sel} value={form.account} onChange={e => set('account', e.target.value)}>
               {accounts.map(a => <option key={a.id}>{a.name}</option>)}
             </select>
           </div>
-          <div>
-            <div style={S.lbl}>{t('tx.category')}</div>
-            <select style={S.sel} value={form.category} onChange={e => pickCategory(e.target.value)}>
-              <option value="">{t('tx.none')}</option>
-              {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
-            </select>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={S.lbl}>{t('tx.account')}</div>
+              <select style={S.sel} value={form.account} onChange={e => set('account', e.target.value)}>
+                {accounts.map(a => <option key={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={S.lbl}>{t('tx.category')}</div>
+              <select style={S.sel} value={form.category} onChange={e => pickCategory(e.target.value)}>
+                <option value="">{t('tx.none')}</option>
+                {catOptions.map((c, i) => <option key={i} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
           </div>
-        </div>
+        )}
         {form.type === 'expense' && envelopes.length > 0 && (
           <div style={{ marginBottom: 10 }}>
             <div style={S.lbl}>
               {t('env.pick_envelope')}
               {envId && envId === suggestedEnvId && <span style={{ color: C.purple, marginLeft: 6, letterSpacing: 0 }}>· {t('env.pick_suggested')}</span>}
             </div>
-            <select style={S.sel} value={envId} onChange={e => pickEnvelope(e.target.value)}>
-              <option value="">{t('env.pick_none')}</option>
-              {envelopes.filter(en => !isCatchall(en)).map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
-              {envelopes.filter(isCatchall).map(en => <option key={en.id} value={en.id}>{en.emoji ? `${en.emoji} ` : ''}{en.name}</option>)}
-            </select>
+            <EnvelopePicker envelopes={envelopes} value={envId} suggestedId={suggestedEnvId} onChange={pickEnvelope} />
+            {/* Category appears once an envelope is chosen, filtered to its
+                categories. Optional and skippable. */}
+            {envId && categoriesForEnvelope(categories, envId).length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={S.lbl}>{t('tx.category')}</div>
+                <CategoryPicker categories={categoriesForEnvelope(categories, envId)} value={form.category} onChange={pickCategory} />
+              </div>
+            )}
           </div>
         )}
         <div style={{ marginBottom: 10 }}>
@@ -432,40 +438,100 @@ function AddTxModal({ bookId, accounts, categories, onSave, onClose, defaultType
 }
 
 // ─── EDIT TRANSACTION SHEET ───────────────────────────────────────────────────
-function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
+function EditTxSheet({ tx, date, override, categories, bookId, onClose, onRefresh }) {
   const { t, locale } = useT()
   const isRecurring = tx.recurrence && tx.recurrence !== 'once'
   const isSkipped = override?.action === 'skipped'
   const isModified = override?.action === 'modified'
+  const isExpense = tx.type === 'expense'
   const currentAmt = isModified ? (parseFloat(override.modified_amount) || 0) : (parseFloat(tx.amount) || 0)
   const [editAmt, setEditAmt] = useState(String(currentAmt.toFixed(2)))
   const [editLabel, setEditLabel] = useState(tx.label || '')
   const [editDate, setEditDate] = useState(tx.date || date)
   const [showDelete, setShowDelete] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState(null)
+
+  // Envelope + category controls (expense only). Envelope-via-category is the
+  // single source of truth, so the two pickers can never disagree.
+  const [envId, setEnvId] = useState(tx.envelope_id ? String(tx.envelope_id) : '')
+  const [category, setCategory] = useState(tx.category || '')
+  const [envTouched, setEnvTouched] = useState(false)
+  const [envelopes, setEnvelopes] = useState([])
+  const [hints, setHints] = useState([])
+
+  useEffect(() => {
+    if (!bookId || !isExpense) return
+    Promise.all([
+      supabase.from('envelopes').select('*').eq('book_id', bookId).eq('archived', false).order('display_order'),
+      supabase.from('merchant_envelope_hints').select('*').eq('book_id', bookId),
+    ]).then(([{ data: envs }, { data: hnt }]) => { setEnvelopes(envs || []); setHints(hnt || []) })
+  }, [bookId, isExpense])
+
+  const catchallId = useMemo(() => envelopes.find(isCatchall)?.id || null, [envelopes])
+  const suggestedEnvId = useMemo(
+    () => suggestEnvelopeId(editLabel, hints, { excludeIds: catchallId ? [catchallId] : [] }),
+    [editLabel, hints, catchallId]
+  )
+  // Preselect the merchant suggestion only for an as-yet-unassigned expense,
+  // until the user touches the picker.
+  useEffect(() => {
+    if (!isExpense || envTouched || tx.envelope_id) return
+    setEnvId(suggestedEnvId || '')
+  }, [suggestedEnvId, envTouched, isExpense, tx.envelope_id])
+
+  function pickEnvelope(id) {
+    setEnvTouched(true)
+    const next = applyEnvelopePick({ category, envelopeId: envId }, id, categories)
+    setEnvId(next.envelopeId); setCategory(next.category)
+  }
+  function pickCategory(name) {
+    const next = applyCategoryPick({ category, envelopeId: envId }, name, categories)
+    setCategory(next.category)
+    if (isExpense) setEnvId(next.envelopeId)
+  }
 
   const labelChanged = editLabel.trim() !== (tx.label || '')
   const dateChanged = editDate !== (tx.date || date)
   const amtChanged = editAmt !== String(currentAmt.toFixed(2))
+  const envChanged = isExpense && String(envId) !== String(tx.envelope_id || '')
+  const catChanged = (category || '') !== (tx.category || '')
 
-  // Pending edit = amount, description, or date changed but not yet saved
-  useUnsavedGuard(!saving && (amtChanged || labelChanged || dateChanged))
+  // Pending edit = amount, description, date, envelope, or category changed
+  useUnsavedGuard(!saving && (amtChanged || labelChanged || dateChanged || envChanged || catChanged))
 
-  // Description and date live on the base transaction (the whole series); fold
-  // any pending changes into a patch object shared by the save handlers.
+  // Description, date, envelope and category live on the base transaction (the
+  // whole series); fold any pending changes into a patch shared by the savers.
   function detailsPatch() {
     const patch = {}
     if (labelChanged && editLabel.trim()) patch.label = editLabel.trim()
     if (dateChanged && editDate) patch.date = editDate
+    if (envChanged) {
+      patch.envelope_id = envId || null
+      patch.assigned_at = envId ? new Date().toISOString() : null
+    }
+    if (catChanged) patch.category = category || null
     return patch
+  }
+
+  // Apply a base-row patch, confirming a row actually changed (0 rows + no error
+  // ⇒ RLS) and learning the merchant→envelope hint only after that confirmation.
+  async function writeBase(extra) {
+    const patch = { ...detailsPatch(), ...(extra || {}) }
+    if (!Object.keys(patch).length) return { ok: true }
+    const { data, error } = await supabase.from('cashflow_transactions')
+      .update(patch).eq('id', tx.id).select('id')
+    if (error || !data || data.length === 0) return { ok: false, error: error?.message || t('env.save_failed') }
+    if (isExpense && envChanged && envId) await upsertMerchantHint(bookId, editLabel.trim() || tx.label, envId)
+    return { ok: true }
   }
 
   async function saveOnce() {
     const parsed = parseFloat(editAmt)
     if (isNaN(parsed) || parsed <= 0) return
-    setSaving(true)
-    const patch = detailsPatch()
-    if (Object.keys(patch).length) await supabase.from('cashflow_transactions').update(patch).eq('id', tx.id)
+    setSaving(true); setSaveErr(null)
+    const res = await writeBase()
+    if (!res.ok) { setSaving(false); setSaveErr(res.error); return }
     const rec = { transaction_id: tx.id, instance_date: date, action: 'modified', modified_amount: parsed }
     if (override) await supabase.from('cashflow_overrides').update(rec).eq('id', override.id)
     else await supabase.from('cashflow_overrides').insert(rec)
@@ -476,8 +542,9 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
   async function saveAllFuture() {
     const parsed = parseFloat(editAmt)
     if (isNaN(parsed) || parsed <= 0) return
-    setSaving(true)
-    await supabase.from('cashflow_transactions').update({ amount: parsed, ...detailsPatch() }).eq('id', tx.id)
+    setSaving(true); setSaveErr(null)
+    const res = await writeBase({ amount: parsed })
+    if (!res.ok) { setSaving(false); setSaveErr(res.error); return }
     setSaving(false)
     onRefresh(); onClose()
   }
@@ -541,6 +608,25 @@ function EditTxSheet({ tx, date, override, categories, onClose, onRefresh }) {
             onChange={e => setEditAmt(e.target.value)}
           />
         </div>
+
+        {isExpense && envelopes.length > 0 && (
+          <>
+            <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 2 }}>
+              {t('env.pick_envelope')}
+              {envId && !envTouched && envId === suggestedEnvId && <span style={{ color: C.purple, marginLeft: 6, letterSpacing: 0, textTransform: 'none' }}>· {t('env.pick_suggested')}</span>}
+            </div>
+            <EnvelopePicker envelopes={envelopes} value={envId} suggestedId={suggestedEnvId} onChange={pickEnvelope} />
+            {envId && categoriesForEnvelope(categories, envId).length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 10, color: C.textLow, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 2 }}>{t('tx.category')}</div>
+                <CategoryPicker categories={categoriesForEnvelope(categories, envId)} value={category} onChange={pickCategory} />
+              </div>
+            )}
+            <div style={{ height: 16 }} />
+          </>
+        )}
+
+        {saveErr && <div role="alert" style={{ fontSize: 12, color: C.orange, marginBottom: 12, lineHeight: 1.5 }}>{saveErr}</div>}
         {isRecurring ? (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -1064,7 +1150,7 @@ function AheadTab({ accounts, transactions, overrides, onOverrideChange, bookId,
       {editSheet && (
         <EditTxSheet
           tx={editSheet.tx} date={editSheet.date} override={editSheet.override}
-          categories={categories}
+          categories={categories} bookId={bookId}
           onClose={() => setEditSheet(null)}
           onRefresh={onOverrideChange}
         />
@@ -1481,7 +1567,7 @@ function TransactionsTab({ accounts, transactions, overrides, bookId, onRefresh,
       {editSheet && (
         <EditTxSheet
           tx={editSheet.tx} date={editSheet.date} override={editSheet.override}
-          categories={categories}
+          categories={categories} bookId={bookId}
           onClose={() => setEditSheet(null)}
           onRefresh={onRefresh}
         />

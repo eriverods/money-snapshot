@@ -53,6 +53,7 @@ const DICT = {
     'common.creating': 'Creating…',
     'common.save': 'Save',
     'common.cancel': 'Cancel',
+    'common.retry': 'Try again',
     'common.sending': 'Sending…',
     'common.of': 'of',
 
@@ -571,6 +572,8 @@ const DICT = {
     'env.starter.create': 'Create envelopes',
     'env.starter.decide_later': 'Decide amounts later',
     'env.starter.back': '← Back',
+    'env.starter.save_error': "Those didn't save just now — give it another tap?",
+    'env.load_error': "We couldn't load your envelopes just now. Nothing's lost — give it another try.",
 
     // Goals Tab
     'goals.total_saved': 'Total Saved',
