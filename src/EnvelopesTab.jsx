@@ -988,6 +988,7 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
   const [hints, setHints] = useState([])
   const [dismissals, setDismissals] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadErr, setLoadErr] = useState(null)
   const [sheet, setSheet] = useState(null)        // null | 'new' | envelope object
   const [view, setView] = useState('list')        // 'list' | 'all' | { detail: env }
   const [showOverflow, setShowOverflow] = useState(false)
@@ -1000,27 +1001,39 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
 
   async function load(silent = false) {
     if (!silent) setLoading(true)
-    try {
-      const [{ data: envs }, { data: hist }, { data: cyc }, { data: gls }, { data: hnt }, { data: dis }] = await Promise.all([
-        supabase.from('envelopes').select('*').eq('book_id', bookId).eq('archived', false)
-          .order('is_catchall').order('display_order'),
-        supabase.from('envelope_period_history').select('*').eq('book_id', bookId).order('closed_at'),
-        supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(12),
-        supabase.from('savings_goals').select('*').eq('book_id', bookId).order('created_at'),
-        supabase.from('merchant_envelope_hints').select('*').eq('book_id', bookId),
-        supabase.from('merchant_catchall_dismissals').select('*').eq('book_id', bookId),
-      ])
-      setEnvelopes(envs || [])
-      setHistory(hist || [])
-      setCycles(cyc || [])
-      setGoals(gls || [])
-      setHints(hnt || [])
-      setDismissals(dis || [])
-    } catch (e) {
-      console.error('EnvelopesTab load error:', e)
-    } finally {
+    setLoadErr(null)
+    // Core query: the envelopes themselves. Sort client-side (catchall last, then
+    // display_order) so a not-yet-applied column/migration can never blank the
+    // whole tab. A hard error here is surfaced with a retry — never swallowed.
+    const { data: envs, error: envErr } = await supabase
+      .from('envelopes').select('*').eq('book_id', bookId).eq('archived', false)
+    if (envErr) {
+      console.error('EnvelopesTab load error:', envErr)
+      setLoadErr(envErr.message)
       setLoading(false)
+      return
     }
+    const sorted = [...(envs || [])].sort((a, b) =>
+      ((a.is_catchall ? 1 : 0) - (b.is_catchall ? 1 : 0)) ||
+      ((a.display_order ?? 0) - (b.display_order ?? 0)))
+    setEnvelopes(sorted)
+
+    // Auxiliary data — tolerate individual failures (e.g. a pending migration on
+    // one table) instead of letting one missing table hide every envelope.
+    const safe = async (q) => { const { data } = await q; return data || [] }
+    const [hist, cyc, gls, hnt, dis] = await Promise.all([
+      safe(supabase.from('envelope_period_history').select('*').eq('book_id', bookId).order('closed_at')),
+      safe(supabase.from('pay_cycles').select('*').eq('book_id', bookId).order('start_date', { ascending: false }).limit(12)),
+      safe(supabase.from('savings_goals').select('*').eq('book_id', bookId).order('created_at')),
+      safe(supabase.from('merchant_envelope_hints').select('*').eq('book_id', bookId)),
+      safe(supabase.from('merchant_catchall_dismissals').select('*').eq('book_id', bookId)),
+    ])
+    setHistory(hist)
+    setCycles(cyc)
+    setGoals(gls)
+    setHints(hnt)
+    setDismissals(dis)
+    setLoading(false)
   }
 
   function refreshAll() { load(true); onRefresh?.() }
@@ -1215,6 +1228,17 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
       <div style={{ width: 24, height: 24, border: `2px solid ${C.border}`, borderTop: `2px solid ${C.purple}`, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    </div>
+  )
+
+  // A real load failure is shown plainly (with retry) — never a silent empty
+  // state that looks like "you have no envelopes."
+  if (loadErr) return (
+    <div style={{ ...S.card, border: `1px solid ${C.orange}` }}>
+      <div role="alert" style={{ fontSize: 13, color: C.textMid, lineHeight: 1.55, marginBottom: 12 }}>
+        {t('env.load_error')}
+      </div>
+      <button style={{ ...S.btn(C.purple), width: '100%' }} onClick={() => load()}>{t('common.retry')}</button>
     </div>
   )
 
@@ -1414,7 +1438,7 @@ export default function EnvelopesTab({ bookId, transactions = [], accounts = [],
       {sheet && (
         <EnvelopeSheet
           env={sheet === 'new' ? null : sheet}
-          bookId={bookId} cycles={cycles} goals={goals}
+          bookId={bookId} cycles={cycles} goals={goals} categories={categories}
           onSaved={(act) => {
             if (act === 'delete' && sheet !== 'new') { deleteEnvelope(sheet); return }
             setSheet(null); refreshAll()
